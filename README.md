@@ -5,12 +5,16 @@ This repository contains the software package necessary to reproduce all the res
 ```bibtex
 @article{Bhimji:2025isp,
     author = "Bhimji, Wahid and Harris, Chris and Mikuni, Vinicius and Nachman, Benjamin",
-    title = "{OmniLearned: A Foundation Model Framework for All Tasks Involving Jet Physics}",
+    title = "{Foundation model framework for all tasks involving jet physics}",
     eprint = "2510.24066",
     archivePrefix = "arXiv",
     primaryClass = "hep-ph",
-    month = "10",
-    year = "2025"
+    doi = "10.1103/knmd-f5jm",
+    journal = "Phys. Rev. D",
+    volume = "113",
+    number = "3",
+    pages = "032020",
+    year = "2026"
 }
 ```
 
@@ -366,7 +370,7 @@ The CATHODE style anomaly detection requires the training of the generative mode
 Alternatively, one can evaluate the pre-trained model across the Aspen Dataset, use the sidebands to determine the background function, and apply cuts to the classifier output to identify anomalies. The pretrained classifier evaluation can be carried out using the commands:
 
 ```bash
-omnilearned evaluate -i /YOUR/CHECKPOINT/FOLDER  --save-tag pretrain_m --dataset aspen  --num-classes 210 --size small --use-event-loss --interaction --batch 64 --use-pid --use-add
+omnilearned evaluate -i /YOUR/CHECKPOINT/FOLDER  --save-tag pretrain_m --dataset aspen  --num-classes 210 --size small --use-event-loss --interaction --local-interaction --batch 64 --use-pid --use-add
 ```
 Notice that since the ASPEN Open Jets dataset is large, the evaluation step might take a while, even when multiple GPUs are used.
 
@@ -375,7 +379,7 @@ Notice that since the ASPEN Open Jets dataset is large, the evaluation step migh
 In this example we need to replace the loaded diffusion head with a track origin predictor. That requires the use of a new loss (classification) assigned to the outputs of the generative head, as well a different training workflow. These changes are automatic within OmniLearned when calling the following training command:
 
 ```bash
-omnilearned train  -o /YOUR/CHECKPOINT/FOLDER --save-tag atlas_flav --dataset atlas_flav --epoch 30 --lr 5e-4 --size small --use-add --num-add 17 --num-classes 4 --iterations 2000 --batch 512 --interaction --num-gen-classes 8 --mode ftag --conditional --num-cond 4
+omnilearned train  -o /YOUR/CHECKPOINT/FOLDER --save-tag atlas_flav --dataset atlas_flav --epoch 30 --lr 5e-4 --size small --use-add --num-add 17 --num-classes 4 --iterations 2000 --batch 512 --interaction --local-interaction --num-gen-classes 8 --mode ftag --conditional --num-cond 4
 ```
 
 By using ```--mode ftag``` all changes needed will be handle internally in OmniLearned.
