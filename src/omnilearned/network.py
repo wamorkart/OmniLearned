@@ -398,7 +398,7 @@ class PET_body(nn.Module):
                 act_layer=act_layer,
                 norm_layer=norm_layer,
                 int_type=int_type,
-                feature_drop=feature_drop
+                feature_drop=feature_drop,
             )
 
         self.local_physics = LocalEmbeddingBlock(
@@ -414,7 +414,7 @@ class PET_body(nn.Module):
             local_int=local_int,
             int_type=int_type,
             num_transformers=num_transf_local,
-            feature_drop=feature_drop
+            feature_drop=feature_drop,
         )
 
         self.num_add = 0
@@ -553,7 +553,7 @@ class PET_body(nn.Module):
 
         x_int = None
         if self.use_int:
-            x_int = self.interaction(x, mask,indices)
+            x_int = self.interaction(x, mask, indices)
 
         # Combine local + global info
         x = x_embed + local_features

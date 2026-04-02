@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import einops
-from torch import Tensor
+
 
 class LayerScale(nn.Module):
     def __init__(self, projection_dim, init_values=1e-3, channels_last=True):
@@ -135,36 +135,33 @@ def get_kt(xi, xj, mask, is_log=False):
 
 
 def get_swd(x, mask, indices, n_iters=5, epsilon=1.0, is_log=True):
-
     B, N, F = x.shape
 
     neighbors = x.view(B * N, -1)[indices, :]
     neighbors = neighbors.view(B, N, -1, F)
-    
+
     mask_neighbors = mask.view(B * N, -1)[indices, :]
     mask_neighbors = mask_neighbors.view(B, N, -1, 1)
-    
+
     knn_fts_center = x.unsqueeze(2).expand_as(neighbors)
     k = neighbors.shape[2]
-    
+
     def _ot(x):
         device, dtype = x.device, x.dtype
-    
-        x_sqnorm = (x ** 2).sum(-1)  # (B, N, k)
+
         x_flat = x.reshape(B, N * k, -1)
         x_flat = x_flat / (x_flat.norm(dim=-1, keepdim=True) + 1e-12)
         gram = x_flat @ x_flat.transpose(-1, -2)
         gram = gram.reshape(B, N, k, N, k).permute(0, 1, 3, 2, 4)
         C = (1.0 - gram).clamp(min=0.0)
-        #C = (x_sqnorm[:, :, None, :, None] + x_sqnorm[:, None, :, None, :] - 2 * gram).clamp(min=0)                
         C = C / (C.amax(dim=(-1, -2, -3, -4), keepdim=True) + 1e-8)
-        
+
         logK = -C / epsilon
         logK = logK - logK.amax(dim=-1, keepdim=True)
 
-        log_u = torch.zeros((B,N,N,k,1), device=device, dtype=dtype)
-        log_v = torch.zeros((B,N,N,1,k), device=device, dtype=dtype)
-        
+        log_u = torch.zeros((B, N, N, k, 1), device=device, dtype=dtype)
+        log_v = torch.zeros((B, N, N, 1, k), device=device, dtype=dtype)
+
         log_a = -torch.log(torch.tensor(k, device=device, dtype=dtype))
 
         for _ in range(n_iters):
@@ -172,19 +169,23 @@ def get_swd(x, mask, indices, n_iters=5, epsilon=1.0, is_log=True):
             log_v = log_a - torch.logsumexp(logK + log_u, dim=-2, keepdim=True)
 
         P = torch.exp(log_u + logK + log_v)
-        dist = (P * C).sum(dim=(-1,-2))
+        dist = (P * C).sum(dim=(-1, -2))
         return dist.unsqueeze(-1)
-        
-    #dist = _ot(neighbors*mask_neighbors)
-    dist = torch.cat([
-        _ot(neighbors*mask_neighbors),
-        _ot((knn_fts_center - neighbors)*mask_neighbors),
-        _ot(neighbors[:,:,:,:3]*mask_neighbors),
-    ],-1)
-    
+
+    # dist = _ot(neighbors*mask_neighbors)
+    dist = torch.cat(
+        [
+            _ot(neighbors * mask_neighbors),
+            _ot((knn_fts_center - neighbors) * mask_neighbors),
+            _ot(neighbors[:, :, :, :3] * mask_neighbors),
+        ],
+        -1,
+    )
+
     if is_log:
         return torch.log(dist.clamp(min=1e-12))
     return dist
+
 
 class InputBlock(nn.Module):
     def __init__(
@@ -221,7 +222,7 @@ class InteractionBlock(nn.Module):
         mlp_drop=0.0,
         norm_layer=nn.LayerNorm,
         int_type="lhc",
-        feature_drop=0
+        feature_drop=0,
     ):
         super().__init__()
         self.int_type = int_type
@@ -232,9 +233,11 @@ class InteractionBlock(nn.Module):
             drop=mlp_drop,
             act_layer=act_layer,
         )
-        self.feature_drop = NoScaleDropout(feature_drop) if feature_drop > 0.0 else nn.Identity()
+        self.feature_drop = (
+            NoScaleDropout(feature_drop) if feature_drop > 0.0 else nn.Identity()
+        )
 
-    def forward(self, x, mask, indices = None):
+    def forward(self, x, mask, indices=None):
         B, M, C = x.shape
         xi = x.unsqueeze(2).expand(-1, -1, x.shape[1], -1)
         xj = x.unsqueeze(1).expand(-1, x.shape[1], -1, -1)
@@ -259,8 +262,8 @@ class InteractionBlock(nn.Module):
                 -1,
             )
         elif self.int_type == "ot":
-            x_int = get_swd(x, mask, indices)*mask_event
-            
+            x_int = get_swd(x, mask, indices) * mask_event
+
         out = self.mlp(x_int)
         # mask again
         out = out * mask_event
@@ -288,7 +291,7 @@ class LocalEmbeddingBlock(nn.Module):
         local_int=False,
         int_type="lhc",
         num_transformers=2,
-        feature_drop=0
+        feature_drop=0,
     ):
         super().__init__()
         self.K = K
@@ -325,7 +328,9 @@ class LocalEmbeddingBlock(nn.Module):
                 for _ in range(num_transformers)
             ]
         )
-        self.feature_drop = NoScaleDropout(feature_drop) if feature_drop > 0.0 else nn.Identity()
+        self.feature_drop = (
+            NoScaleDropout(feature_drop) if feature_drop > 0.0 else nn.Identity()
+        )
 
     def pairwise_distance(self, points):
         r = torch.sum(points * points, dim=2, keepdim=True)
@@ -357,7 +362,7 @@ class LocalEmbeddingBlock(nn.Module):
 
         knn_fts_center = features.unsqueeze(2).expand_as(neighbors)
         local_features = knn_fts_center - neighbors
-        
+
         if self.local_int:
             # Add the information of the interaction matrix
             if self.int_type == "lhc":
@@ -392,7 +397,6 @@ class LocalEmbeddingBlock(nn.Module):
                 * mask_neighbors
             )
 
-        
         mask_neighbors = mask_neighbors.view(batch_size * num_points, self.K, 1)
         local_features = local_features.view(batch_size * num_points, self.K, -1)
 
