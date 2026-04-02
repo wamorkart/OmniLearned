@@ -32,9 +32,12 @@ def get_ad_eps(x, mask):
         device=x.device,
     )
 
-    means = means.view(1, 1, 4)
-    stds = stds.view(1, 1, 4)
-    eps = torch.randn_like(x) * stds + means
+    if x.shape[-1] == 4:
+        means = means.view(1, 1, 4)
+        stds = stds.view(1, 1, 4)
+        eps = torch.randn_like(x) * stds + means
+    else:
+        eps = torch.randn_like(x)
 
     return eps * mask
 
