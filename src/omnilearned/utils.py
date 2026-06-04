@@ -285,6 +285,15 @@ def get_loss(
     return loss
 
 
+def get_distill_loss(student_logits, teacher_logits, distill_T=4.0):
+    """KL divergence between student and pre-saved teacher logits at temperature T."""
+    soft_teacher = F.softmax(teacher_logits / distill_T, dim=-1)
+    log_soft_student = F.log_softmax(student_logits / distill_T, dim=-1)
+    return (distill_T**2) * F.kl_div(
+        log_soft_student, soft_teacher, reduction="batchmean"
+    )
+
+
 def save_checkpoint(
     model,
     ema_model,

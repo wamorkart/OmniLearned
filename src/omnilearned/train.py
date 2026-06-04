@@ -17,6 +17,7 @@ from omnilearned.utils import (
     get_checkpoint_name,
     shadow_copy,
     get_loss,
+    get_distill_loss,
     save_checkpoint,
     restore_checkpoint,
     get_model_parameters,
@@ -31,13 +32,14 @@ torch._dynamo.config.verbose = False
 
 
 def get_logs(device):
-    logs_buff = torch.zeros((5), dtype=torch.float32, device=device)
+    logs_buff = torch.zeros((6), dtype=torch.float32, device=device)
     logs = {}
     logs["loss"] = logs_buff[0].view(-1)
     logs["loss_class"] = logs_buff[1].view(-1)
     logs["loss_gen"] = logs_buff[2].view(-1)
     logs["loss_clip"] = logs_buff[3].view(-1)
     logs["loss_class_event"] = logs_buff[4].view(-1)
+    logs["loss_kd"] = logs_buff[5].view(-1)
     return logs
 
 
@@ -58,6 +60,10 @@ def train_step(
     gscaler=None,
     ema_model=None,
     ema_decay=0.9999,
+    distill=False,
+    distill_alpha=0.5,
+    distill_beta=0.5,
+    distill_T=4.0,
 ):
     model.train()
 
@@ -108,6 +114,24 @@ def train_step(
                 data_pid=data_pid,
             )
 
+            if distill:
+                if outputs["y_pred"] is None:
+                    raise ValueError(
+                        "Distillation requires classifier-style logits in outputs['y_pred']."
+                    )
+                if batch.get("teacher_logits") is None:
+                    raise ValueError(
+                        "Distillation enabled but no teacher_logits in batch. "
+                        "Check --teacher_labels_dir / --teacher_tag and that "
+                        "generate-labels was run for this split."
+                    )
+                teacher_logits = batch["teacher_logits"].to(device)
+                loss_kd = get_distill_loss(
+                    outputs["y_pred"], teacher_logits, distill_T=distill_T
+                )
+                logs["loss_kd"] += loss_kd.detach()
+                loss = distill_alpha * loss + distill_beta * loss_kd
+
         if use_amp and gscaler is not None:
             gscaler.scale(loss).backward()
             gscaler.unscale_(optimizer)
@@ -146,6 +170,10 @@ def val_step(
     use_clip=False,
     use_event_loss=False,
     iterations_per_epoch=-1,
+    distill=False,
+    distill_alpha=0.5,
+    distill_beta=0.5,
+    distill_T=4.0,
 ):
     model.eval()
 
@@ -190,6 +218,21 @@ def val_step(
                 data_pid=data_pid,
             )
 
+            if distill:
+                if outputs["y_pred"] is None:
+                    raise ValueError(
+                        "Distillation requires classifier-style logits in outputs['y_pred']."
+                    )
+                if batch.get("teacher_logits") is None:
+                    raise ValueError(
+                        "Validation distillation enabled but no teacher_logits in batch."
+                    )
+                teacher_logits = batch["teacher_logits"].to(device)
+                loss_kd = get_distill_loss(
+                    outputs["y_pred"], teacher_logits, distill_T=distill_T
+                )
+                logs["loss_kd"] += loss_kd.detach()
+
     if dist.is_initialized():
         for key in logs:
             dist.all_reduce(logs[key].detach())
@@ -221,6 +264,10 @@ def train_model(
     run=None,
     ema_model=None,
     ema_decay=0.999,
+    distill=False,
+    distill_alpha=0.5,
+    distill_beta=0.5,
+    distill_T=4.0,
 ):
     checkpoint_name = get_checkpoint_name(save_tag)
 
@@ -257,6 +304,10 @@ def train_model(
             gscaler=gscaler,
             ema_model=ema_model,
             ema_decay=ema_decay,
+            distill=distill,
+            distill_alpha=distill_alpha,
+            distill_beta=distill_beta,
+            distill_T=distill_T,
         )
         val_logs = val_step(
             model,
@@ -268,6 +319,10 @@ def train_model(
             use_clip=use_clip,
             use_event_loss=use_event_loss,
             iterations_per_epoch=iterations_per_epoch,
+            distill=distill,
+            distill_alpha=distill_alpha,
+            distill_beta=distill_beta,
+            distill_T=distill_T,
         )
 
         losses["train_loss"].append(train_logs["loss"])
@@ -290,6 +345,10 @@ def train_model(
             if use_clip:
                 print(
                     f"CLIP loss: {train_logs['loss_clip']:.4f}, CLIP Val Loss: {val_logs['loss_clip']:.4f}"
+                )
+            if distill:
+                print(
+                    f"KD Loss: {train_logs['loss_kd']:.4f}, KD Val Loss: {val_logs['loss_kd']:.4f}"
                 )
             print(
                 "Time taken for epoch {} is {} sec".format(epoch, time.time() - start)
@@ -377,7 +436,18 @@ def run(
     feature_drop: float = 0.0,
     num_workers: int = 16,
     clip_inputs: bool = False,
+    distill: bool = False,
+    teacher_labels_dir: str = "",
+    teacher_tag: str = "",
+    distill_alpha: float = 0.5,
+    distill_beta: float = 0.5,
+    distill_T: float = 4.0,
 ):
+    if distill and (not teacher_labels_dir or not teacher_tag):
+        raise ValueError(
+            "--distill requires both --teacher_labels_dir and --teacher_tag."
+        )
+
     local_rank, rank, size = ddp_setup()
 
     model_params = get_model_parameters(model_size)
@@ -431,6 +501,8 @@ def run(
         clip_inputs=clip_inputs,
         mode=mode,
         nevts=nevts,
+        teacher_labels_dir=teacher_labels_dir if distill else None,
+        teacher_tag=teacher_tag if distill else None,
     )
     if rank == 0:
         print("**** Setup ****")
@@ -452,6 +524,8 @@ def run(
         size=size,
         clip_inputs=clip_inputs,
         mode=mode,
+        teacher_labels_dir=teacher_labels_dir if distill else None,
+        teacher_tag=teacher_tag if distill else None,
     )
 
     param_groups = get_param_groups(
@@ -594,6 +668,10 @@ def run(
         use_amp=use_amp,
         run=run,
         ema_model=ema_model,
+        distill=distill,
+        distill_alpha=distill_alpha,
+        distill_beta=distill_beta,
+        distill_T=distill_T,
     )
 
     dist.destroy_process_group()

@@ -13,12 +13,10 @@ from omnilearned.utils import (
 )
 from omnilearned.diffusion import generate
 import os
+import time
 import numpy as np
 import h5py
 from tqdm.auto import tqdm
-
-# seed_value = 30  # You can choose any integer as your seed
-# torch.manual_seed(seed_value)
 
 
 def eval_model(
@@ -31,33 +29,67 @@ def eval_model(
     outdir="",
     save_tag="pretrain",
     rank=0,
+    dataset_type="test",
+    num_chunks=1,
+    chunk_idx=0,
 ):
-    prediction, cond, labels = test_step(model, test_loader, mode, device)
+    chunk_suffix = f"_chunk{chunk_idx}of{num_chunks}" if num_chunks > 1 else ""
+    cls_name = f"outputs_{save_tag}_{dataset}_{dataset_type}{chunk_suffix}_rank{rank}.npz"
+    gen_name = f"generated_{save_tag}_{dataset}_{dataset_type}{chunk_suffix}_rank{rank}.h5"
+    # For classifier mode we also collect sample_keys + raw logits so the
+    # same outputs_*.npz file can serve as the teacher labels for KD.
+    return_sample_keys = mode == "classifier"
+    result = test_step(
+        model, test_loader, mode, device, return_sample_keys=return_sample_keys
+    )
+    if return_sample_keys:
+        prediction, cond, labels, sample_keys = result
+    else:
+        prediction, cond, labels = result
 
     if mode in ["classifier", "regression", "segmentation"]:
         if use_event_loss:
             np.savez(
-                os.path.join(outdir, f"outputs_{save_tag}_{dataset}_{rank}.npz"),
+                os.path.join(
+                    outdir, cls_name
+                ),
                 prediction=prediction[:, :200].softmax(-1).cpu().numpy(),
                 event_prediction=prediction[:, 200:].softmax(-1).cpu().numpy(),
+                logits=prediction.cpu().numpy().astype(np.float16),
+                sample_keys=sample_keys.cpu().numpy(),
                 pid=labels.cpu().numpy(),
                 cond=cond.cpu().numpy() if cond is not None else [],
             )
         else:
             if mode == "classifier":
-                prediction = prediction.softmax(-1).cpu().numpy()
+                logits_np = prediction.cpu().numpy().astype(np.float16)
+                prediction_np = prediction.softmax(-1).cpu().numpy()
+                np.savez(
+                    os.path.join(
+                        outdir,
+                        cls_name,
+                    ),
+                    prediction=prediction_np,
+                    logits=logits_np,
+                    sample_keys=sample_keys.cpu().numpy(),
+                    pid=labels.cpu().numpy(),
+                    cond=cond.cpu().numpy() if cond is not None else [],
+                )
             else:
-                prediction = prediction.cpu().numpy()
-
-            np.savez(
-                os.path.join(outdir, f"outputs_{save_tag}_{dataset}_{rank}.npz"),
-                prediction=prediction,
-                pid=labels.cpu().numpy(),
-                cond=cond.cpu().numpy() if cond is not None else [],
-            )
+                np.savez(
+                    os.path.join(
+                        outdir,
+                        cls_name,
+                    ),
+                    prediction=prediction.cpu().numpy(),
+                    pid=labels.cpu().numpy(),
+                    cond=cond.cpu().numpy() if cond is not None else [],
+                )
     else:
         with h5py.File(
-            os.path.join(outdir, f"generated_{save_tag}_{dataset}_{rank}.h5"),
+            os.path.join(
+                outdir, gen_name
+            ),
             "w",
         ) as fh5:
             fh5.create_dataset("data", data=prediction.cpu().numpy())
@@ -70,12 +102,29 @@ def test_step(
     dataloader,
     mode,
     device,
+    return_sample_keys=False,
 ):
     model.eval()
+
+    # Inference precision is controlled by EVAL_AMP: "fp32" (default, no
+    # autocast), "bf16", or "fp16". Logits are saved as float16 regardless, so
+    # bf16 autocast gives a large speedup on tensor cores at negligible cost --
+    # but the default stays fp32 until the bf16 path is validated A/B, so a
+    # run can't silently produce unvalidated bf16 logits. Set EVAL_AMP=bf16 to
+    # opt in per-dataset.
+    amp_choice = os.environ.get("EVAL_AMP", "fp32").lower()
+    amp_dtypes = {"bf16": torch.bfloat16, "fp16": torch.float16}
+    on_cuda = device != "cpu"
+    use_amp = on_cuda and amp_choice in amp_dtypes
+    amp_dtype = amp_dtypes.get(amp_choice)
+    if is_master_node():
+        print(f"[eval] forward precision: {'autocast ' + amp_choice if use_amp else 'fp32'}")
+    fwd_time = 0.0
 
     preds = []
     labels = []
     conds = []
+    sample_keys = [] if return_sample_keys else None
 
     for ib, batch in enumerate(
         tqdm(dataloader, desc="Iterating", total=len(dataloader))
@@ -92,11 +141,23 @@ def test_step(
 
         with torch.no_grad():
             if mode in ["classifier", "regression", "segmentation"]:
-                outputs = model(X, y, **model_kwargs)
+                if on_cuda:
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
+                if use_amp:
+                    with torch.autocast("cuda", dtype=amp_dtype):
+                        outputs = model(X, y, **model_kwargs)
+                else:
+                    outputs = model(X, y, **model_kwargs)
+                if on_cuda:
+                    torch.cuda.synchronize()
+                fwd_time += time.perf_counter() - t0
                 output_name = (
                     "y_pred" if mode in ["classifier", "regression"] else "z_pred"
                 )
-                preds.append(outputs[output_name])
+                # Cast back to fp32: autocast outputs bf16/fp16, but downstream
+                # softmax + numpy save need a numpy-representable float dtype.
+                preds.append(outputs[output_name].float())
 
             elif mode == "generator":
                 assert "cond" in model_kwargs, (
@@ -109,6 +170,8 @@ def test_step(
             labels.append(y)
 
         conds.append(batch["cond"])
+        if return_sample_keys:
+            sample_keys.append(batch["sample_key"])
         if mode == "generator":
             if batch["pid"] is not None:
                 preds[-1] = torch.cat(
@@ -117,15 +180,23 @@ def test_step(
             if batch["add_info"] is not None:
                 preds[-1] = torch.cat([preds[-1], model_kwargs["add_info"]], -1)
 
+    if is_master_node() and mode in ["classifier", "regression", "segmentation"]:
+        print(f"[eval] total forward time: {fwd_time:.2f}s over {len(preds)} batches "
+              f"({1000 * fwd_time / max(len(preds), 1):.1f} ms/batch)")
+
     if mode == "generator":
         preds = pad_array(preds, npart)
     else:
         preds = torch.cat(preds).to(device)
-    return (
+
+    result = (
         preds,
         torch.cat(conds).to(device) if conds[0] is not None else None,
         torch.cat(labels).to(device),
     )
+    if return_sample_keys:
+        result = result + (torch.cat(sample_keys),)
+    return result
 
 
 def run(
@@ -154,6 +225,9 @@ def run(
     batch: int = 64,
     num_workers: int = 16,
     clip_inputs: bool = False,
+    dataset_type: str = "test",
+    num_chunks: int = 1,
+    chunk_idx: int = 0,
 ):
     local_rank, rank, size = ddp_setup()
 
@@ -188,10 +262,9 @@ def run(
         print(f"Evaluating on device: {d}, with {size} GPUs")
         print("************")
 
-    # load in train data
     test_loader = load_data(
         dataset,
-        dataset_type="test",
+        dataset_type=dataset_type,
         use_cond=True,
         use_pid=use_pid,
         pid_idx=pid_idx,
@@ -205,6 +278,8 @@ def run(
         clip_inputs=clip_inputs,
         mode=mode,
         shuffle=False,
+        num_chunks=num_chunks,
+        chunk_idx=chunk_idx,
     )
     if rank == 0:
         print("**** Setup ****")
@@ -256,6 +331,9 @@ def run(
         rank=rank,
         outdir=outdir,
         save_tag=save_tag,
+        dataset_type=dataset_type,
+        num_chunks=num_chunks,
+        chunk_idx=chunk_idx,
     )
     dist.barrier()
     dist.destroy_process_group()

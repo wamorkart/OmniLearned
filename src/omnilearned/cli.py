@@ -92,6 +92,19 @@ def train(
     mlp_drop: float = typer.Option(0.0, help="Dropout for mlp layers"),
     feature_drop: float = typer.Option(0.0, help="Dropout for input features"),
     num_workers: int = typer.Option(16, help="Number of workers for data loading"),
+    # Distillation options (offline: requires pre-generated teacher logits)
+    distill: bool = typer.Option(
+        False, help="Enable offline KD against pre-saved teacher logits"
+    ),
+    teacher_labels_dir: str = typer.Option(
+        "", help="Directory containing teacher outputs_*.npz files (saved by evaluate)"
+    ),
+    teacher_tag: str = typer.Option(
+        "", help="Teacher save_tag; selects outputs_{tag}_{dataset}_{type}_*.npz"
+    ),
+    distill_alpha: float = typer.Option(0.5, help="Weight for task loss"),
+    distill_beta: float = typer.Option(0.5, help="Weight for KL distillation"),
+    distill_T: float = typer.Option(4.0, help="Temperature for KL distillation"),
 ):
     run_training(
         outdir,
@@ -140,6 +153,12 @@ def train(
         feature_drop,
         num_workers,
         clip_inputs=clip_inputs,
+        distill=distill,
+        teacher_labels_dir=teacher_labels_dir,
+        teacher_tag=teacher_tag,
+        distill_alpha=distill_alpha,
+        distill_beta=distill_beta,
+        distill_T=distill_T,
     )
 
 
@@ -250,6 +269,21 @@ def evaluate(
         False, help="Clip input dataset to be within R=0.8 and atl least 500 MeV"
     ),
     num_workers: int = typer.Option(16, help="Number of workers for data loading"),
+    dataset_type: str = typer.Option(
+        "test",
+        "--dataset-type",
+        help="Which split to evaluate on: train, test, or val",
+    ),
+    num_chunks: int = typer.Option(
+        1,
+        "--num-chunks",
+        help="Split the dataset into N chunks; run one chunk per job and concat after.",
+    ),
+    chunk_idx: int = typer.Option(
+        0,
+        "--chunk-idx",
+        help="Which chunk (0..num_chunks-1) this invocation processes.",
+    ),
 ):
     run_evaluation(
         indir,
@@ -277,6 +311,9 @@ def evaluate(
         batch,
         num_workers,
         clip_inputs=clip_inputs,
+        dataset_type=dataset_type,
+        num_chunks=num_chunks,
+        chunk_idx=chunk_idx,
     )
 
 

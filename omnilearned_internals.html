@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OmniLearned &mdash; How it works</title>
+<style>
+  :root{
+    --bg:#f7f7fa; --fg:#1d1d22; --muted:#5b5b6a;
+    --accent:#7B3294; --accent2:#4a1d59; --soft:#ece6f3;
+    --code-bg:#1e1e2a; --code-fg:#eaeaf0;
+    --border:#dcd8e4;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter','Segoe UI',sans-serif;margin:0;background:var(--bg);color:var(--fg);line-height:1.55}
+  header{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;padding:2.5rem 1.5rem;text-align:center}
+  header h1{margin:0 0 .4rem;font-size:2.1rem}
+  header p{margin:.2rem 0;opacity:.9}
+  nav.toc{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);padding:.6rem 1rem;z-index:10;font-size:.92rem;overflow-x:auto;white-space:nowrap}
+  nav.toc a{color:var(--accent);text-decoration:none;margin-right:.9rem;font-weight:600}
+  nav.toc a:hover{text-decoration:underline}
+  main{max-width:1080px;margin:0 auto;padding:1.4rem 1.4rem 4rem}
+  h2{color:var(--accent2);border-bottom:2px solid var(--soft);padding-bottom:.3rem;margin-top:2.4rem}
+  h3{color:var(--accent);margin-top:1.8rem}
+  h4{margin-top:1.4rem;color:#3a2a45}
+  code,pre{font-family:'JetBrains Mono','Fira Code',Consolas,monospace}
+  code{background:#eee2f0;padding:.05rem .35rem;border-radius:4px;color:#3a1346;font-size:.9em}
+  pre{background:var(--code-bg);color:var(--code-fg);padding:1rem;border-radius:8px;overflow-x:auto;font-size:.86rem;line-height:1.45}
+  pre code{background:none;color:inherit;padding:0}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.93rem}
+  th,td{border:1px solid var(--border);padding:.5rem .65rem;text-align:left;vertical-align:top}
+  th{background:var(--soft);color:var(--accent2)}
+  tr:nth-child(even) td{background:#fbfaff}
+  .callout{border-left:4px solid var(--accent);background:#fff;padding:.8rem 1rem;border-radius:4px;margin:1rem 0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .callout.warn{border-color:#d4a017;background:#fff8e6}
+  .callout.note{border-color:#4a90c0;background:#eef6fc}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  @media (max-width:780px){.grid2{grid-template-columns:1fr}}
+  .pill{display:inline-block;background:var(--soft);color:var(--accent2);font-size:.78rem;font-weight:600;padding:.1rem .55rem;border-radius:12px;margin:0 .25rem .25rem 0}
+  .arrow{color:var(--accent);font-weight:700}
+  .diagram{background:#fff;border:1px solid var(--border);border-radius:8px;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono',monospace;font-size:.85rem;line-height:1.35;white-space:pre;overflow-x:auto}
+  footer{text-align:center;color:var(--muted);padding:1.5rem;font-size:.85rem}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OmniLearned</h1>
+  <p>A unified deep-learning framework for jet physics &mdash; how the code works end-to-end</p>
+  <p style="font-size:.85rem;opacity:.8">Reference: Bhimji, Harris, Mikuni, Nachman, <em>Phys. Rev. D</em> 113 032020 (arXiv:2510.24066)</p>
+</header>
+
+<nav class="toc">
+  <a href="#overview">1. Overview</a>
+  <a href="#cli">2. CLI &amp; entry points</a>
+  <a href="#inputs">3. Inputs</a>
+  <a href="#modes">4. Modes</a>
+  <a href="#arch">5. Architecture</a>
+  <a href="#layers">6. Layers</a>
+  <a href="#sizes">7. Sizes</a>
+  <a href="#training">8. Training</a>
+  <a href="#losses">9. Losses</a>
+  <a href="#diffusion">10. Diffusion</a>
+  <a href="#eval">11. Evaluation</a>
+  <a href="#examples">12. Examples</a>
+</nav>
+
+<main>
+
+<!-- =================================================================== -->
+<section id="overview">
+<h2>1. Overview</h2>
+<p>
+OmniLearned is a <strong>foundation-model framework for jet physics</strong>. The core network &mdash; called <code>PET2</code> (Point-Edge Transformer v2) &mdash; treats every event as a variable-length <em>point cloud</em> of particles. The same backbone serves classification, regression, segmentation, flavour-tagging, and generative diffusion tasks, and can be pre-trained jointly across many datasets and then fine-tuned on a downstream task.
+</p>
+
+<p>Three things to keep in mind:</p>
+<ul>
+  <li><strong>Inputs</strong> are <code>(N, M, F)</code> tensors: N events, up to M particles per event (zero-padded), F per-particle features.</li>
+  <li><strong>The network</strong> has a shared <em>body</em> that produces particle embeddings, plus task-specific <em>heads</em> (classifier and/or generator).</li>
+  <li><strong>The mode</strong> (<code>--mode classifier|generator|pretrain|regression|segmentation|ftag</code>) selects which heads are built, which losses fire, and how the data is interpreted.</li>
+</ul>
+
+<div class="diagram">
+        ┌────────────────────── PET2 ──────────────────────┐
+input → │   PET_body  →  shared particle embeddings         │ → classifier head → y_pred (logits)
+        │      ↑                                            │ → generator  head → z_pred (velocity / per-particle class)
+        │   conditioning: cond / pid / add_info / time      │
+        └───────────────────────────────────────────────────┘
+</div>
+</section>
+
+<!-- =================================================================== -->
+<section id="cli">
+<h2>2. CLI &amp; entry points</h2>
+<p>Everything is exposed through a <code>typer</code> CLI defined in <code>src/omnilearned/cli.py</code>:</p>
+<table>
+<thead><tr><th>Command</th><th>Calls</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>omnilearned train</code></td><td><code>train.run</code></td><td>Train the point-cloud network (PET2)</td></tr>
+<tr><td><code>omnilearned evaluate</code></td><td><code>evaluate.run</code></td><td>Load a checkpoint and dump predictions / generated events</td></tr>
+<tr><td><code>omnilearned dataloader</code></td><td><code>dataloader.load_data</code></td><td>Download a registered dataset (train/test/val) into a folder</td></tr>
+<tr><td><code>omnilearned train-hl</code></td><td><code>train_hl.run</code></td><td>Train a high-level (jet-level, MLP-based) diffusion model for anomaly detection</td></tr>
+<tr><td><code>omnilearned evaluate-hl</code></td><td><code>evaluate_hl.run</code></td><td>Same as above for the HL variant</td></tr>
+</tbody>
+</table>
+<p>The shell scripts in the repo (<code>train.sh</code>, <code>evaluate.sh</code>, <code>fine_tune_*.sh</code>) are thin SLURM wrappers around these commands.</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="inputs">
+<h2>3. Inputs: data format and per-feature semantics</h2>
+<p>
+Every dataset is a directory of HDF5 files split into <code>train/</code>, <code>test/</code>, <code>val/</code> subfolders. The dataloader walks all <code>*.h5</code> files in a split, builds a flat index of <code>(file_idx, sample_idx)</code> pairs, shards it across DDP ranks, and yields collated mini-batches.
+</p>
+
+<h3>3.1 Required HDF5 datasets</h3>
+<table>
+<thead><tr><th>Key</th><th>Shape</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>data</code></td><td>(N, M, F)</td><td>Per-particle features (kinematic + optional PID + optional add-features)</td></tr>
+<tr><td><code>pid</code></td><td>(N,) or (N, K)</td><td>Event-level label (class index for classification; vector for regression)</td></tr>
+<tr><td><code>global</code></td><td>(N, G)</td><td>Optional jet-level / event-level conditioning features (mass, pT, multiplicity, ...)</td></tr>
+<tr><td><code>data_pid</code></td><td>(N, M) or (N, M, K)</td><td>Per-particle labels (used by <code>segmentation</code> and <code>ftag</code> modes)</td></tr>
+</tbody>
+</table>
+
+<h3>3.2 Kinematic features (the first 4 channels of <code>data</code>)</h3>
+<p>The canonical &ldquo;jet&rdquo; ordering is:</p>
+<ol>
+  <li><strong>Δη</strong> &mdash; pseudorapidity difference between particle and jet axis</li>
+  <li><strong>Δφ</strong> &mdash; azimuthal angle difference between particle and jet axis</li>
+  <li><strong>log&nbsp;pT</strong> &mdash; log of particle transverse momentum</li>
+  <li><strong>log&nbsp;E</strong> &mdash; log of particle energy</li>
+</ol>
+
+<div class="callout note">
+<strong>Padding convention:</strong> a particle is treated as &ldquo;real&rdquo; iff its <em>third</em> feature (index 2, i.e. log pT) is non-zero. This is computed everywhere as <code>mask = x[:, :, 2:3] != 0</code> (see <code>network.py:543</code>, <code>diffusion.py:60</code>, etc.). Zero-pad rows to the maximum particle count in the dataset.
+</div>
+
+<h3>3.3 Optional extra channels: PID and additional features</h3>
+<p>Beyond the 4 kinematic features, <code>data</code> can carry:</p>
+<ul>
+  <li><strong>PID</strong> &mdash; one integer column at <code>--pid-idx</code> (default 4). Enabled with <code>--use-pid</code>. The dataloader splits it out into <code>sample["pid"]</code> and removes that column from <code>X</code>.</li>
+  <li><strong>Additional features</strong> &mdash; the <em>last</em> <code>--num-add</code> columns. Enabled with <code>--use-add</code>. The dataloader pops them into <code>sample["add_info"]</code> and removes them from <code>X</code>.</li>
+</ul>
+
+<p>So with <code>--use-pid --use-add --num-add 4</code> on a 9-feature file, <code>X</code> goes from 9 → <strong>4 kinematic features</strong>, while <code>pid</code> and <code>add_info</code> are passed separately into the model. <em>This is why <code>--num-feat</code> must equal the post-split kinematic count, not the raw column count.</em></p>
+
+<div class="callout warn">
+<strong>Common pitfall:</strong> if you don&rsquo;t pass <code>--use-pid</code> / <code>--use-add</code> at evaluate time but the checkpoint was trained <em>with</em> them, the dataloader feeds 9 columns into a network whose <code>InputBlock</code> was sized for 4 &mdash; you&rsquo;ll see <code>RuntimeError: size of tensor a (9) must match tensor b (4) at non-singleton dimension 2</code>.
+</div>
+
+<h3>3.4 Built-in datasets</h3>
+<p>The <code>dataloader</code> command auto-downloads from <code>https://portal.nersc.gov/cfs/dasrepo/omnilearned/</code>. Supported names (see <code>dataloader.py:270</code>):</p>
+<p>
+  <span class="pill">top</span><span class="pill">qg</span><span class="pill">atlas</span><span class="pill">aspen</span>
+  <span class="pill">jetclass</span><span class="pill">jetclass2</span><span class="pill">h1</span>
+  <span class="pill">cms_qcd</span><span class="pill">cms_bsm</span><span class="pill">cms_top</span>
+  <span class="pill">atlas_flav</span><span class="pill">jetnet150</span><span class="pill">jetnet30</span>
+  <span class="pill">camels</span><span class="pill">quijote</span><span class="pill">microboone</span>
+  <span class="pill">aspen_bsm / aspen_top (ad_sb / ad_sr)</span>
+  <span class="pill">qcd_dijet</span><span class="pill">dctr</span><span class="pill">toy</span><span class="pill">custom</span>
+</p>
+<p>The special name <code>pretrain</code> concatenates the datasets used in the published pretrain mix: <code>atlas, aspen, jetclass, jetclass2, h1, cms_qcd, cms_bsm</code> (~4&nbsp;TB total).</p>
+
+<h3>3.5 Label shifts &amp; the 210-class pretrain space</h3>
+<p>For the multi-dataset pretrain, integer labels are <strong>shifted</strong> per dataset so they live in one contiguous space (<code>dataloader.py:440</code>):</p>
+<table>
+<thead><tr><th>Dataset</th><th>label shift</th></tr></thead>
+<tbody>
+<tr><td><code>jetclass</code></td><td>+2</td></tr>
+<tr><td><code>jetclass2</code></td><td>+12</td></tr>
+<tr><td><code>aspen</code></td><td>+200</td></tr>
+<tr><td><code>cms_qcd</code></td><td>+201</td></tr>
+<tr><td><code>cms_bsm</code></td><td>+202</td></tr>
+</tbody>
+</table>
+<p>That&rsquo;s the origin of the &ldquo;210 classes&rdquo;: <strong>0&hellip;199</strong> are particle/jet types, <strong>200&hellip;209</strong> are event/dataset types. The <code>--use-event-loss</code> flag tells the loss to grade those two groups separately (see §9).</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="modes">
+<h2>4. Modes</h2>
+<p>The <code>--mode</code> flag selects what the model does. Internally, in <code>PET2.__init__</code> it decides which heads to instantiate and which losses to compute:</p>
+<table>
+<thead><tr>
+  <th>Mode</th>
+  <th>Classifier head</th>
+  <th>Generator head</th>
+  <th>What gets returned</th>
+  <th>Typical use</th>
+</tr></thead>
+<tbody>
+<tr><td><code>classifier</code></td><td>✓</td><td>—</td><td><code>y_pred</code> (logits)</td><td>Jet tagging, ID</td></tr>
+<tr><td><code>regression</code></td><td>✓</td><td>—</td><td><code>y_pred</code> (continuous)</td><td>Regress jet quantities</td></tr>
+<tr><td><code>pretrain</code></td><td>✓</td><td>✓ (diffusion)</td><td><code>y_pred</code>, <code>y_perturb</code>, <code>z_pred</code></td><td>Joint generative + classification pretraining</td></tr>
+<tr><td><code>generator</code></td><td>—</td><td>✓ (diffusion)</td><td><code>z_pred</code> (velocity)</td><td>Particle-cloud generation</td></tr>
+<tr><td><code>segmentation</code></td><td>—</td><td>✓ (per-particle classification)</td><td><code>z_pred</code> (per-particle logits)</td><td>Per-particle labelling</td></tr>
+<tr><td><code>ftag</code></td><td>✓</td><td>✓ (per-particle track origin classification)</td><td><code>y_pred</code> + <code>z_pred</code></td><td>Flavour tagging (jet + track-origin)</td></tr>
+</tbody>
+</table>
+
+<p>Key wiring in <code>PET2.forward</code> (<code>network.py:144</code>):</p>
+<pre><code>if self.mode in ["generator", "pretrain"]:
+    z, v, v_weight = perturb(x, time)              # noise the input
+    z_body = self.body(z, cond, pid, add_info, time)
+    z_pred = self.generator(z_body, y)
+
+if self.mode in ["classifier", "regression", "segmentation",
+                 "pretrain", "ftag"]:
+    x_body = self.body(x, cond, pid, add_info, torch.zeros_like(time))
+    if mode in ["classifier", "pretrain", "regression", "ftag"]:
+        y_pred = self.classifier(x_body)
+    if self.mode == "pretrain":
+        y_perturb = self.classifier(z_body)        # contrastive-style aux head
+    if self.mode in ["ftag", "segmentation"]:
+        z_pred = self.generator(x_body, y)         # per-particle head on clean inputs
+</code></pre>
+
+<p>So in <strong>pretrain</strong> mode the same body is run twice (clean and noised) and the classifier is applied to <em>both</em> &mdash; the noised pass is what enables the joint diffusion+classification objective.</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="arch">
+<h2>5. Architecture: PET2 in detail</h2>
+
+<p><code>PET2</code> (<code>network.py:18</code>) is a thin wrapper that owns three things:</p>
+<ul>
+  <li><strong><code>self.body</code></strong> &mdash; the shared <code>PET_body</code> that turns a point cloud into a sequence of contextual embeddings.</li>
+  <li><strong><code>self.classifier</code></strong> &mdash; the <code>PET_classifier</code> head (only built for classifier-style modes).</li>
+  <li><strong><code>self.generator</code></strong> &mdash; the <code>PET_generator</code> head (only built for generative / per-particle modes).</li>
+</ul>
+
+<h3>5.1 <code>PET_body</code> &mdash; the shared backbone</h3>
+
+<div class="diagram">
+ raw x (B,M,F)
+   │
+   │  mask = x[:,:,2:3] != 0
+   │
+   ├──▶ InputBlock(x, mask)          ──── x_embed (global per-particle MLP)
+   │
+   ├──▶ LocalEmbeddingBlock           ──── local_features (kNN graph + transformer)
+   │       (kNN over first num_coord features; each particle attends to its K
+   │        nearest neighbours via an attention stack)
+   │
+   ├──▶ InteractionBlock (optional)   ──── x_int (B*H, M, M) bias added to attention
+   │       (pairwise physics features: log-mass, log-ΔR, log-kT, ... per pair)
+   │
+   │  x = x_embed + local_features
+   │  x = x + pid_embed(pid)     · if --use-pid
+   │  x = x + add_embed(add)     · if --use-add
+   │  x = [cond_token, x]        · if --conditional
+   │  x = [time_token, x]        · if mode in {generator, pretrain}
+   │  x = [class_tokens, x]      · num_tokens learnable summary tokens prepended
+   │
+   ├──▶ Stack of AttBlock × num_transformers   (with optional U-Net skips)
+   │
+   └──▶ DynamicTanh norm × mask  →  contextual embeddings
+</div>
+
+<p>Important construction details:</p>
+<ul>
+  <li><strong>Class tokens</strong>: <code>num_tokens</code> learnable summary tokens are prepended to every event. Default 4. The classifier head reads only these.</li>
+  <li><strong>num_add</strong> in the body tracks how many <em>extra</em> non-particle tokens were prepended (cond token, time token). Heads need this to know where the &ldquo;real&rdquo; particles start.</li>
+  <li><strong>Skip connections</strong>: with <code>skip=True</code>, the transformer stack is split into halves with U-Net-style skips wired through <code>AttBlock.skip_linear</code>.</li>
+  <li><strong>Interaction bias</strong>: when <code>use_int=True</code>, pairwise physics features are turned into a per-head <code>(B·H, M, M)</code> tensor that&rsquo;s added to the attention mask of every block. This is added <em>only</em> to the particle-particle sub-block (not to the prepended tokens).</li>
+</ul>
+
+<h3>5.2 <code>PET_classifier</code> &mdash; the classification head</h3>
+<p>(<code>network.py:191</code>)</p>
+<ul>
+  <li>Stack of <code>TokenAttBlock</code> layers: cross-attention from the <code>num_tokens</code> learnable summary tokens into the particle sequence (the tokens are <em>queries</em>, the particles are <em>keys/values</em>).</li>
+  <li>Concatenates the <code>num_tokens</code> token outputs, runs an MLP, and projects to <code>num_classes</code> via <code>nn.Linear</code>.</li>
+</ul>
+
+<h3>5.3 <code>PET_generator</code> &mdash; the generative / per-particle head</h3>
+<p>(<code>network.py:255</code>)</p>
+<ul>
+  <li>For diffusion: prepends an <code>nn.Embedding(num_classes, base_dim)</code> for the class label <code>y</code>, runs another transformer stack with full self-attention, then projects every particle slot back to <code>input_dim</code> (the predicted velocity).</li>
+  <li>For segmentation / ftag: <code>num_gen_classes &gt; 1</code> swaps the output projection to <code>num_gen_classes</code> logits per particle, and <code>skip_pid=True</code> drops the class embedding (we&rsquo;re classifying tracks, not generating them).</li>
+</ul>
+</section>
+
+<!-- =================================================================== -->
+<section id="layers">
+<h2>6. Building blocks (<code>layers.py</code>)</h2>
+
+<table>
+<thead><tr><th>Block</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>DynamicTanh</code></td>
+    <td>Cheap replacement for <code>LayerNorm</code>: <code>x → weight · tanh(α·x)</code>. <code>α</code> and per-channel <code>weight</code> are learnable. Used as the default <code>norm_layer</code> everywhere.</td></tr>
+<tr><td><code>LayerScale</code></td>
+    <td>Per-channel learnable scale (<code>γ</code>) applied after residual blocks; supports masked inputs.</td></tr>
+<tr><td><code>NoScaleDropout</code></td>
+    <td>Bernoulli token-drop without the usual <code>1/(1-p)</code> rescaling &mdash; used to drop PID / extra-feature tokens stochastically during training.</td></tr>
+<tr><td><code>MLP</code></td>
+    <td>Two-layer MLP <code>Linear → act → norm → drop → Linear → drop</code>, optionally masked.</td></tr>
+<tr><td><code>InputBlock</code></td>
+    <td>Per-particle embedding: <code>norm(x) → MLP</code> from <code>input_dim → base_dim</code>. <em>This is where the size-mismatch errors surface if <code>--num-feat</code> doesn&rsquo;t match the data.</em></td></tr>
+<tr><td><code>LocalEmbeddingBlock</code></td>
+    <td>kNN graph + local transformer. For each particle: find <code>K</code> nearest neighbours in coordinate space, compute relative features (and optionally local interaction features), run <code>num_transformers_head</code> attention blocks, average-pool over neighbours back to one vector per particle.</td></tr>
+<tr><td><code>InteractionBlock</code></td>
+    <td>Computes a pairwise feature tensor (<code>B,M,M,3</code>) using one of three physics-aware feature sets, MLP-projects it to <code>num_heads</code> channels, and reshapes to a <code>(B·H, M, M)</code> additive attention bias.</td></tr>
+<tr><td><code>AttBlock</code></td>
+    <td>Standard pre-norm transformer block: MHA + MLP residuals, supports an additive attention mask and an optional U-Net skip via <code>skip_linear</code>.</td></tr>
+<tr><td><code>TokenAttBlock</code></td>
+    <td>Variant used in the classifier head: only the first <code>num_tokens</code> rows act as queries; they attend to the rest of the sequence. Cheaper than full self-attention.</td></tr>
+<tr><td><code>MPFourier</code> (<code>diffusion.py</code>)</td>
+    <td>Random-frequency Fourier features for the diffusion time <code>t ∈ [0,1]</code>. Output is fed through <code>time_embed</code> and prepended as a token.</td></tr>
+</tbody>
+</table>
+
+<h3>6.1 The three interaction modes</h3>
+<p>Set by <code>--interaction-type</code>:</p>
+<ul>
+  <li><strong><code>lhc</code></strong> (default) &mdash; <code>[log m², log ΔR, log kT]</code>. Standard collider-physics pair features.</li>
+  <li><strong><code>astro</code></strong> &mdash; <code>[log Δ3d, log(1-cosθ), log(1-cosθ_diff)]</code>. 3D Euclidean / cosine features.</li>
+  <li><strong><code>ot</code></strong> &mdash; Sinkhorn / sliced Wasserstein distance computed in a sliding window via <code>get_swd</code>.</li>
+</ul>
+<p>Choose with the dataset domain in mind; the <code>lhc</code> set assumes <code>(Δη, Δφ, log pT, log E)</code> kinematics.</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="sizes">
+<h2>7. Model sizes</h2>
+<p>Set by <code>--size {small,medium,large}</code> &mdash; resolved in <code>utils.get_model_parameters</code>:</p>
+<table>
+<thead><tr>
+  <th>Size</th>
+  <th><code>base_dim</code></th>
+  <th><code>num_transformers</code> (body)</th>
+  <th><code>num_transformers_head</code></th>
+  <th><code>num_heads</code></th>
+  <th><code>num_tokens</code></th>
+  <th><code>mlp_ratio</code></th>
+  <th>Approx params</th>
+</tr></thead>
+<tbody>
+<tr><td><strong>small</strong></td><td>128</td><td>8</td><td>2</td><td>8</td><td>4</td><td>2</td><td>~2.8 M</td></tr>
+<tr><td><strong>medium</strong></td><td>512</td><td>12</td><td>2</td><td>16</td><td>4</td><td>2</td><td>~57.8 M</td></tr>
+<tr><td><strong>large</strong></td><td>1024</td><td>28</td><td>4</td><td>32</td><td>4</td><td>2</td><td>~460.8 M</td></tr>
+</tbody>
+</table>
+<p>The published checkpoints are named <code>pretrain_s</code>, <code>pretrain_m</code>, <code>pretrain_l</code>. They share the same architecture knobs; only the size and number of training tokens differ.</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="training">
+<h2>8. Training pipeline</h2>
+
+<p>Entry point: <code>train.run()</code> (<code>train.py:392</code>). High-level flow:</p>
+<div class="diagram">
+1. ddp_setup()                           → init torch.distributed (NCCL)
+2. PET2(**model_params)                  → build model in the requested mode/size
+3. load_data(train) / load_data(val)     → HEPDataset + DataLoader (sharded by rank)
+4. get_param_groups(...)                 → separate decay vs no-decay, scale LR on new layers
+5. Lion / AdamW + cosine / onecycle      → optimizer + LR schedule
+6. DDP(model) + shadow_copy → ema_model  → wrap, build EMA shadow
+7. (optional) restore_checkpoint         → resume or fine-tune
+8. for epoch: train_step + val_step      → standard loop, checkpoint on best val
+</div>
+
+<h3>8.1 Optimizer &amp; schedule</h3>
+<ul>
+  <li><strong>Lion</strong> (default) or <strong>AdamW</strong>, with separate parameter groups:
+    <ul>
+      <li><em>decay</em> vs <em>no-decay</em> &mdash; <code>{"norm","token"}</code> parameters never get weight decay.</li>
+      <li><em>new-layer</em> vs <em>pretrained-layer</em> &mdash; on fine-tune, &ldquo;new&rdquo; layers (<code>classifier.out</code>, <code>generator</code>, <code>body.cond</code>, <code>body.add_embed</code>, <code>body.local_physics</code>, <code>body.embed</code>, <code>body.interaction</code>) use a higher LR via <code>--lr-factor</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Cosine schedule with warmup</strong> (default) or <strong>OneCycleLR</strong>.</li>
+  <li><strong>Gradient clipping</strong> at norm 1.0 every step.</li>
+  <li><strong>AMP</strong> is opt-in with <code>--use-amp</code>; uses <code>torch.amp.GradScaler</code>.</li>
+</ul>
+
+<h3>8.2 EMA</h3>
+<p>An exponential-moving-average shadow copy is always created (<code>shadow_copy</code>). After every backward pass:</p>
+<pre><code>ema_p.mul_(ema_decay).add_(model_p, alpha=1.0 - ema_decay)   # default decay = 0.9999</code></pre>
+<p>Generative inference (<code>evaluate.run</code> with <code>--mode generator</code>) restores the EMA weights, not the live ones &mdash; this is the standard diffusion practice.</p>
+
+<h3>8.3 Checkpointing</h3>
+<p><code>save_checkpoint</code> writes a dict with separate sub-state-dicts:</p>
+<pre><code>{
+  "body":            model.module.body.state_dict(),
+  "classifier_head": ... if classifier is not None,
+  "generator_head":  ... if generator  is not None,
+  "ema_body":        ... ,
+  "ema_generator":   ... ,
+  "optimizer":       optimizer.state_dict(),
+  "sched":           lr_scheduler.state_dict(),
+  "epoch":           ...,
+  "loss":            ...,
+}</code></pre>
+<p>Because heads are stored separately, <strong>fine-tuning</strong> can load just the body and reinitialise the classifier output layer for a new label space. <code>restore_checkpoint(..., fine_tune=True)</code> implements that by filtering on shape match and explicitly skipping any key containing <code>"out."</code>.</p>
+
+<h3>8.4 Knowledge distillation (offline)</h3>
+<p>If <code>--distill</code> is passed, the dataloader loads pre-saved teacher logits from a directory of <code>outputs_*.npz</code> files (produced earlier by <code>omnilearned evaluate</code>) and adds a KL term:</p>
+<pre><code>loss = α · task_loss + β · T² · KL(softmax(student/T) ‖ softmax(teacher/T))</code></pre>
+<p>Defaults: <code>α=β=0.5</code>, <code>T=4</code>.</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="losses">
+<h2>9. Losses</h2>
+<p>All losses live in <code>utils.get_loss</code> (<code>utils.py:207</code>). The function looks at the <code>outputs</code> dict and adds whichever terms are non-<code>None</code>.</p>
+
+<h3>9.1 Classification loss</h3>
+<ul>
+  <li><strong>Weighted cross-entropy</strong>: per-batch class weights <code>1/(count_c + 1e-6)</code>, normalised to mean 1. This counteracts class imbalance without needing an explicit sampler.</li>
+  <li><strong><code>--use-event-loss</code></strong>: splits the 210 logits into two heads &mdash; <code>[0..199]</code> for jet types, <code>[200..209]</code> for event types &mdash; and applies CE to whichever block the label falls into. See <code>get_class_loss</code> in <code>utils.py:181</code>.</li>
+</ul>
+
+<h3>9.2 Generator / diffusion loss</h3>
+<p>For diffusion (modes <code>generator</code>, <code>pretrain</code>):</p>
+<pre><code>loss_gen = v_weight · MSE(v, z_pred).sum(particles) / num_nonzero_particles</code></pre>
+<p>where <code>v = ε - x</code> (velocity parameterisation, see §10).</p>
+<p>For per-particle classification (modes <code>segmentation</code>, <code>ftag</code>), the generator head outputs per-particle logits and the loss is masked CE against <code>data_pid</code>.</p>
+
+<h3>9.3 Auxiliary heads</h3>
+<ul>
+  <li><strong><code>y_perturb</code></strong> (only in <code>pretrain</code> mode): same classifier applied to the <em>noised</em> embeddings. Adds a second weighted-CE term, weighted by <code>α² = (1-t)²</code> so clean examples count more.</li>
+  <li><strong><code>--use-clip</code></strong>: AstroCLIP-style contrastive loss between clean and noised body embeddings (<code>CLIPLoss</code> in <code>utils.py:85</code>). Encourages the body to keep noised representations close to clean ones for the <em>same</em> example.</li>
+  <li><strong>Distillation</strong>: see §8.4.</li>
+</ul>
+</section>
+
+<!-- =================================================================== -->
+<section id="diffusion">
+<h2>10. Diffusion: noise schedule, sampling</h2>
+
+<p>The diffusion implementation in <code>diffusion.py</code> is intentionally minimal:</p>
+
+<h3>10.1 Schedule</h3>
+<p>Linear &ldquo;rectified flow&rdquo;-style schedule with <code>α(t) = 1 - t</code>, <code>σ(t) = t</code> for <code>t ∈ [0,1]</code>:</p>
+<pre><code>z(t) = α(t) · x  +  σ(t) · ε
+v(t) = ε - x        # velocity target the network learns to predict
+logSNR(t) = -2 log(σ/α)</code></pre>
+
+<h3>10.2 Noise distribution</h3>
+<p><code>get_ad_eps</code> samples ε from a Gaussian with empirically-calibrated means and stds for the 4 kinematic channels of the published datasets:</p>
+<pre><code>means = [0.0, 0.0, 1.11398, 1.43384]
+stds  = [0.270949, 0.27426, 1.30273, 1.33559]</code></pre>
+<p>If your input has &gt;4 channels, the extras get unit-Gaussian noise. The mask is applied so zero-padded slots stay zero.</p>
+
+<h3>10.3 Sampling</h3>
+<p><code>generate</code> integrates the learned velocity field with a midpoint ODE solver (<code>torchdiffeq.odeint</code>) over <code>nsteps=128</code> steps from <code>t=1 → t=0</code>. Particle multiplicity per event is read from the conditioning vector (<code>cond[:, multiplicity_idx]</code>) and used to build the per-event mask before integration.</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="eval">
+<h2>11. Evaluation</h2>
+
+<p><code>evaluate.run()</code> (<code>evaluate.py:165</code>) builds the model exactly as <code>train.run</code> would, then:</p>
+<ol>
+  <li>Loads the checkpoint (EMA weights iff <code>--mode generator</code>).</li>
+  <li>Wraps in DDP and runs <code>eval_model → test_step</code> over the chosen split.</li>
+  <li>Saves a per-rank <code>npz</code> (classification / regression / segmentation) or <code>h5</code> (generator).</li>
+</ol>
+
+<h3>11.1 Output file naming</h3>
+<p>Per-rank files in <code>--output_dir</code>:</p>
+<pre><code>outputs_{save_tag}_{dataset}_{dataset_type}_{rank}.npz   # classifier / regression / segmentation
+generated_{save_tag}_{dataset}_{dataset_type}_{rank}.h5  # generator</code></pre>
+
+<h3>11.2 Contents of the classifier npz</h3>
+<table>
+<thead><tr><th>Key</th><th>Shape</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>prediction</code></td><td>(N, C)</td><td>Softmax probabilities</td></tr>
+<tr><td><code>logits</code></td><td>(N, C) float16</td><td>Raw logits (also serve as teacher labels for KD)</td></tr>
+<tr><td><code>sample_keys</code></td><td>(N, 2)</td><td><code>(file_idx, sample_idx)</code> pairs &mdash; needed for KD lookup</td></tr>
+<tr><td><code>pid</code></td><td>(N,)</td><td>True labels</td></tr>
+<tr><td><code>cond</code></td><td>(N, G)</td><td>Per-event conditioning (saved verbatim from the batch)</td></tr>
+<tr><td><code>event_prediction</code></td><td>(N, 10)</td><td>Only with <code>--use-event-loss</code>: softmax over the event-type head</td></tr>
+</tbody>
+</table>
+<p>Each DDP rank writes its own file (<code>_0.npz</code>, <code>_1.npz</code>, ...); you concatenate them downstream (the helper <code>concat_logits.py</code> in the repo does this).</p>
+</section>
+
+<!-- =================================================================== -->
+<section id="examples">
+<h2>12. Worked examples</h2>
+
+<h3>12.1 From scratch on top-tagging (small)</h3>
+<pre><code>omnilearned train -o ./ --save-tag top_s \
+    --dataset top --path /your/datasets \
+    --size small --epoch 15 --lr 5e-4 \
+    --wd 0.5 --interaction</code></pre>
+<p>4 kinematic features (default <code>--num-feat 4</code>), no PID, no extras, <code>lhc</code> interaction bias on, cosine LR with no warmup, Lion optimiser.</p>
+
+<h3>12.2 The published <code>pretrain_l</code> recipe</h3>
+<pre><code>omnilearned train -o /checkpoints/ --save-tag pretrain_l \
+    --mode pretrain --dataset pretrain --num-classes 210 \
+    --epoch 500 --iterations 1000 --batch 8 --num-workers 32 \
+    --lr 1e-5 --wd 0.1 --optim lion --size large \
+    --feature-drop 0.1 \
+    --use-pid --use-add --use-event-loss --interaction \
+    --wandb --resuming</code></pre>
+<p>What that means in plain terms:</p>
+<ul>
+  <li><strong>Mode <code>pretrain</code></strong>: joint diffusion + classification on the mixed pretrain dataset.</li>
+  <li><strong>210 classes</strong>: 200 jet types + 10 event types (see §3.5).</li>
+  <li><strong><code>--use-pid --use-add</code></strong>: the data has PID at index 4 and 4 extra features at the end; the dataloader splits them out, leaving 4 kinematic features for the body.</li>
+  <li><strong><code>--use-event-loss</code></strong>: split the 210 logits into the 200-jet and 10-event heads (see §9.1).</li>
+  <li><strong><code>--feature-drop 0.1</code></strong>: stochastically drop the PID / add-feature tokens 10% of the time during training, so the model isn&rsquo;t overly reliant on them.</li>
+</ul>
+
+<h3>12.3 Fine-tune the pretrain checkpoint on top-tagging</h3>
+<pre><code>omnilearned train -o /checkpoints/ --save-tag fine_tune_top_l \
+    --dataset top --batch 8 --epoch 5 \
+    --wd 10.0 --lr 1e-6 --size large --num-workers 4 \
+    --fine-tune --pretrain-tag pretrain_l --interaction</code></pre>
+<p>Loads <code>pretrain_l</code>&rsquo;s body and classifier (minus the output linear), wires up a fresh <code>num_classes</code>-way output for the new label space, and trains with a tiny LR.</p>
+
+<h3>12.4 Evaluating the pretrain checkpoint on ATLAS</h3>
+<pre><code>omnilearned evaluate -i /checkpoints/ -o /out/ \
+    --save-tag pretrain_l --dataset atlas --size large \
+    --path /global/cfs/cdirs/m4567/www/ \
+    --num-classes 210 --batch 64 --num-workers 4 \
+    --interaction --use-pid --use-add --use-event-loss \
+    --dataset-type val</code></pre>
+<div class="callout warn">
+The <code>--use-pid --use-add --use-event-loss</code> trio must match the training recipe, otherwise the dataloader feeds the wrong number of channels into the body and you&rsquo;ll get the dimension-mismatch <code>RuntimeError</code> at <code>DynamicTanh.forward</code>.
+</div>
+</section>
+
+<footer>
+  Generated from the source tree at
+  <code>/global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned</code>.
+  All file references point to the current state of that checkout.
+</footer>
+
+</main>
+</body>
+</html>

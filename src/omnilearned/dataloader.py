@@ -1,5 +1,7 @@
 import torch
+import torch.distributed as dist
 import h5py
+import shutil
 from argparse import ArgumentParser
 from torch.utils.data import Dataset, DataLoader
 import requests
@@ -43,6 +45,17 @@ def collate_point_cloud(batch, max_part=5000):
     # Truncate point clouds
     truncated_X = point_clouds[:, :max_particles, :].contiguous()  # (B, M, F)
     result = {"X": truncated_X, "y": labels}
+
+    # sample_key is always present: (B, 2) tensor of (file_idx, sample_idx)
+    result["sample_key"] = torch.stack([item["sample_key"] for item in batch])
+
+    # teacher_logits is present only when a teacher labels file was loaded
+    if all(item.get("teacher_logits") is not None for item in batch):
+        result["teacher_logits"] = torch.stack(
+            [item["teacher_logits"] for item in batch]
+        )
+    else:
+        result["teacher_logits"] = None
 
     # Handle optional fields in a loop to reduce code duplication
     optional_fields = ["cond", "pid", "add_info", "data_pid", "vertex_pid"]
@@ -118,12 +131,16 @@ class HEPDataset(Dataset):
         clip_inputs=False,
         mode="",
         nevts=-1,
+        teacher_logits_arr=None,
+        teacher_lookup=None,
     ):
         """
         Args:
             file_paths (list): List of file paths.
             use_pid (bool): Flag to select if PID information is used during training
             use_add (bool): Flags to select if additional information besides kinematics are used
+            teacher_logits_arr (np.ndarray): (N, num_classes) array of teacher logits.
+            teacher_lookup (dict): maps (file_idx, sample_idx) -> row in teacher_logits_arr.
         """
         self.use_cond = use_cond
         self.use_pid = use_pid
@@ -140,6 +157,9 @@ class HEPDataset(Dataset):
         self.nevts = int(nevts)
         if self.nevts < 0:
             self.nevts = len(self.file_indices)
+
+        self.teacher_logits_arr = teacher_logits_arr
+        self.teacher_lookup = teacher_lookup
 
         # random.shuffle(self.file_indices)  # Shuffle data entries globally
 
@@ -158,6 +178,9 @@ class HEPDataset(Dataset):
         f = self._get_file(file_idx)
 
         sample = {}
+        sample["sample_key"] = torch.tensor(
+            [file_idx, sample_idx], dtype=torch.int64
+        )
 
         sample["X"] = torch.tensor(f["data"][sample_idx], dtype=torch.float32)
         if self.clip_inputs:
@@ -202,6 +225,16 @@ class HEPDataset(Dataset):
                 f["data_pid"][sample_idx], dtype=data_dtype
             )
 
+        if self.teacher_lookup is not None:
+            pos = self.teacher_lookup.get((int(file_idx), int(sample_idx)))
+            sample["teacher_logits"] = (
+                torch.from_numpy(self.teacher_logits_arr[pos].copy())
+                if pos is not None
+                else None
+            )
+        else:
+            sample["teacher_logits"] = None
+
         return sample
 
     def __del__(self):
@@ -231,6 +264,10 @@ def load_data(
     mode="",
     shuffle=True,
     nevts=-1,
+    teacher_labels_dir=None,
+    teacher_tag=None,
+    num_chunks=1,
+    chunk_idx=0,
 ):
     supported_datasets = [
         "top",
@@ -292,39 +329,129 @@ def load_data(
                 raise ValueError(f"No download URL found for dataset '{dataset_name}'.")
             download_h5_files(url, dataset_path)
 
-        h5_files = list(dataset_path.glob("*.h5")) + list(dataset_path.glob("*.hdf5"))
+        # Sort for deterministic ordering across runs/filesystems; a saved
+        # file_index.npy is only valid against the same order.
+        h5_files = sorted(
+            list(dataset_path.glob("*.h5")) + list(dataset_path.glob("*.hdf5"))
+        )
         file_list.extend(map(str, h5_files))  # Convert to string paths
 
-        index_file = dataset_path / "file_index.npy"
-        if index_file.is_file():
-            if shuffle:
-                indices = np.load(index_file, mmap_mode="r")[rank::size]
-            else:
-                indices = np.load(index_file, mmap_mode="r")[
-                    len(np.load(index_file, mmap_mode="r")) * rank // size : len(
-                        np.load(index_file, mmap_mode="r")
-                    )
-                    * (rank + 1)
-                    // size
-                ]
-            file_indices.extend(
-                (file_idx + index_shift, sample_idx) for file_idx, sample_idx in indices
-            )
-            index_shift += len(h5_files)
+        def _validate_index(arr, files):
+            if arr.size == 0:
+                return False
+            fids = np.unique(arr[:, 0])
+            if int(fids.max()) >= len(files) or int(fids.min()) < 0:
+                return False
+            for fid in fids:
+                max_si = int(arr[arr[:, 0] == fid, 1].max())
+                try:
+                    with h5py.File(files[int(fid)], "r") as f:
+                        if max_si >= len(f["data"]):
+                            return False
+                except Exception:
+                    return False
+            return True
 
-        else:
+        scratch_root = os.environ.get("SCRATCH")
+        scratch_index = (
+            Path(scratch_root)
+            / "omnilearned_cache"
+            / names[iname]
+            / dataset_type
+            / "file_index.npy"
+            if scratch_root
+            else None
+        )
+
+        index_file = dataset_path / "file_index.npy"
+
+        # Stage CFS index → $SCRATCH once via rank 0 before any rank reads.
+        # Concurrent np.load() from many DDP ranks against the same CFS file
+        # has been observed to fail with "could only read 0 elements".
+        # $SCRATCH (also Lustre, but tuned for parallel I/O) handles the
+        # concurrent read pattern reliably once the file is freshly written.
+        if (
+            scratch_index is not None
+            and index_file.is_file()
+            and not scratch_index.is_file()
+        ):
+            if rank == 0:
+                scratch_index.parent.mkdir(parents=True, exist_ok=True)
+                tmp = scratch_index.with_suffix(scratch_index.suffix + ".tmp")
+                shutil.copyfile(str(index_file), str(tmp))
+                tmp.rename(scratch_index)
+            if dist.is_available() and dist.is_initialized():
+                dist.barrier()
+
+        indices_arr = None
+        # Prefer scratch_index over the CFS copy.
+        for candidate in (scratch_index, index_file):
+            if candidate is None or not candidate.is_file():
+                continue
+            # Load fully into RAM: mmap on Lustre/CFS is unreliable with
+            # concurrent DDP ranks and can fail in mmap.mmap with large indices.
+            arr = np.load(candidate)
+            if _validate_index(arr, h5_files):
+                indices_arr = arr
+                break
+            print(
+                f"WARNING: cached index {candidate} is inconsistent with current "
+                f"file ordering for dataset {names[iname]}; will regenerate"
+            )
+
+        if indices_arr is None:
             print(f"Creating index list for dataset {names[iname]}")
-            file_indices = []
-            # Precompute indices for efficient access
+            new_indices = []
             for file_idx, path in enumerate(h5_files):
                 try:
                     with h5py.File(path, "r") as f:
                         num_samples = len(f["data"])
-                        file_indices.extend([(file_idx, i) for i in range(num_samples)])
+                        new_indices.extend([(file_idx, i) for i in range(num_samples)])
                 except Exception as e:
                     print(f"ERROR: File {path} is likely corrupted: {e}")
-            np.save(index_file, np.array(file_indices, dtype=np.int32))
-            print(f"Number of events: {len(file_indices)}")
+            indices_arr = np.array(new_indices, dtype=np.int32)
+
+            save_target = None
+            if os.access(dataset_path, os.W_OK):
+                save_target = index_file
+            elif scratch_index is not None:
+                if rank == 0:
+                    scratch_index.parent.mkdir(parents=True, exist_ok=True)
+                save_target = scratch_index
+            if save_target is not None and rank == 0:
+                np.save(save_target, indices_arr)
+                print(f"Saved index to {save_target}; {len(indices_arr)} events")
+            elif save_target is None:
+                print(
+                    f"WARNING: no writable cache location for index; "
+                    f"recomputed in-memory ({len(indices_arr)} events)"
+                )
+
+        if num_chunks > 1:
+            if not (0 <= chunk_idx < num_chunks):
+                raise ValueError(
+                    f"chunk_idx={chunk_idx} out of range for num_chunks={num_chunks}"
+                )
+            total = len(indices_arr)
+            c0 = total * chunk_idx // num_chunks
+            c1 = total * (chunk_idx + 1) // num_chunks
+            indices_arr = indices_arr[c0:c1]
+            if rank == 0:
+                print(
+                    f"Chunk {chunk_idx}/{num_chunks} on {names[iname]}: "
+                    f"events {c0}..{c1} of {total}"
+                )
+
+        if shuffle:
+            indices = indices_arr[rank::size]
+        else:
+            total = len(indices_arr)
+            indices = indices_arr[total * rank // size : total * (rank + 1) // size]
+
+        file_indices.extend(
+            (file_idx + index_shift, sample_idx) for file_idx, sample_idx in indices
+        )
+        index_shift += len(h5_files)
 
     # Shift labels if they are not used for pretrain
     label_shift = {
@@ -334,6 +461,36 @@ def load_data(
         "cms_qcd": 201,
         "cms_bsm": 202,
     }
+
+    teacher_logits_arr = None
+    teacher_lookup = None
+    if teacher_labels_dir is not None and teacher_tag is not None:
+        pattern = f"outputs_{teacher_tag}_{dataset_name}_{dataset_type}_*.npz"
+        npz_files = sorted(Path(teacher_labels_dir).glob(pattern))
+        if not npz_files:
+            raise ValueError(
+                f"No teacher label files found matching {pattern} in {teacher_labels_dir}"
+            )
+        logits_parts, keys_parts = [], []
+        for npz_path in npz_files:
+            data_npz = np.load(npz_path)
+            if "logits" not in data_npz or "sample_keys" not in data_npz:
+                raise ValueError(
+                    f"{npz_path} is missing 'logits' or 'sample_keys'. "
+                    "Re-run evaluate after the KD changes to produce them."
+                )
+            logits_parts.append(data_npz["logits"].astype(np.float32))
+            keys_parts.append(data_npz["sample_keys"])
+        teacher_logits_arr = np.concatenate(logits_parts, axis=0)
+        sample_keys = np.concatenate(keys_parts, axis=0)
+        teacher_lookup = {
+            (int(k[0]), int(k[1])): i for i, k in enumerate(sample_keys)
+        }
+        if rank == 0:
+            print(
+                f"Loaded teacher logits: {teacher_logits_arr.shape[0]} samples "
+                f"from {len(npz_files)} files ({pattern})"
+            )
 
     data = HEPDataset(
         file_list,
@@ -347,6 +504,8 @@ def load_data(
         clip_inputs=clip_inputs,
         mode=mode,
         nevts=nevts,
+        teacher_logits_arr=teacher_logits_arr,
+        teacher_lookup=teacher_lookup,
     )
 
     loader = DataLoader(
