@@ -372,10 +372,13 @@ def train_model(
                 )
 
         if run is not None:
-            for key in train_logs:
-                run.log({f"train {key}": train_logs[key]})
-            for key in val_logs:
-                run.log({f"val {key}": val_logs[key]})
+            run.log(
+                {
+                    **{f"train {key}": train_logs[key] for key in train_logs},
+                    **{f"val {key}": val_logs[key] for key in val_logs},
+                },
+                step=epoch,
+            )
 
         if epoch - tracker["bestEpoch"] > patience:
             print(f"breaking on device: {device}")
@@ -632,6 +635,12 @@ def run(
                 "epochs": epoch,
                 "batch size": batch,
                 "mode": mode,
+                "size": model_size,
+                "fine_tune": fine_tune,
+                "distill": distill,
+                "distill_alpha": distill_alpha,
+                "distill_beta": distill_beta,
+                "distill_T": distill_T,
             },
         )
     else:

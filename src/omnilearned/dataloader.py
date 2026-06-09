@@ -131,16 +131,18 @@ class HEPDataset(Dataset):
         clip_inputs=False,
         mode="",
         nevts=-1,
-        teacher_logits_arr=None,
-        teacher_lookup=None,
+        teacher_file_paths=None,
     ):
         """
         Args:
             file_paths (list): List of file paths.
             use_pid (bool): Flag to select if PID information is used during training
             use_add (bool): Flags to select if additional information besides kinematics are used
-            teacher_logits_arr (np.ndarray): (N, num_classes) array of teacher logits.
-            teacher_lookup (dict): maps (file_idx, sample_idx) -> row in teacher_logits_arr.
+            teacher_file_paths (list): List parallel to file_paths; each entry is
+                the path to a companion teacher-logits .h5 (with a `teacher_logits`
+                dataset indexed by sample_idx) for the matching source file, or
+                None if no teacher logits are available for it. Read lazily, one
+                row per sample, exactly like the source `data` dataset.
         """
         self.use_cond = use_cond
         self.use_pid = use_pid
@@ -158,8 +160,8 @@ class HEPDataset(Dataset):
         if self.nevts < 0:
             self.nevts = len(self.file_indices)
 
-        self.teacher_logits_arr = teacher_logits_arr
-        self.teacher_lookup = teacher_lookup
+        self.teacher_file_paths = teacher_file_paths
+        self._teacher_cache = {}  # lazy cache for open companion h5py.File handles
 
         # random.shuffle(self.file_indices)  # Shuffle data entries globally
 
@@ -172,6 +174,14 @@ class HEPDataset(Dataset):
             file_path = self.file_paths[file_idx]
             self._file_cache[file_idx] = h5py.File(file_path, "r")
         return self._file_cache[file_idx]
+
+    def _get_teacher_file(self, file_idx):
+        # Lazily open the companion teacher-logits h5 for this source file.
+        if file_idx not in self._teacher_cache:
+            self._teacher_cache[file_idx] = h5py.File(
+                self.teacher_file_paths[file_idx], "r"
+            )
+        return self._teacher_cache[file_idx]
 
     def __getitem__(self, idx):
         file_idx, sample_idx = self.file_indices[idx]
@@ -225,12 +235,13 @@ class HEPDataset(Dataset):
                 f["data_pid"][sample_idx], dtype=data_dtype
             )
 
-        if self.teacher_lookup is not None:
-            pos = self.teacher_lookup.get((int(file_idx), int(sample_idx)))
-            sample["teacher_logits"] = (
-                torch.from_numpy(self.teacher_logits_arr[pos].copy())
-                if pos is not None
-                else None
+        if (
+            self.teacher_file_paths is not None
+            and self.teacher_file_paths[file_idx] is not None
+        ):
+            tf = self._get_teacher_file(file_idx)
+            sample["teacher_logits"] = torch.from_numpy(
+                tf["teacher_logits"][sample_idx].astype(np.float32)
             )
         else:
             sample["teacher_logits"] = None
@@ -239,7 +250,7 @@ class HEPDataset(Dataset):
 
     def __del__(self):
         # Clean up: close all cached file handles.
-        for f in self._file_cache.values():
+        for f in list(self._file_cache.values()) + list(self._teacher_cache.values()):
             try:
                 f.close()
             except Exception as e:
@@ -318,6 +329,8 @@ def load_data(
     file_list = []
     file_indices = []
     index_shift = 0
+    teacher_on = teacher_labels_dir is not None and teacher_tag is not None
+    teacher_file_list = [] if teacher_on else None
     for iname, dataset_path in enumerate(dataset_paths):
         dataset_path = Path(dataset_path)
         dataset_path.mkdir(parents=True, exist_ok=True)
@@ -335,6 +348,24 @@ def load_data(
             list(dataset_path.glob("*.h5")) + list(dataset_path.glob("*.hdf5"))
         )
         file_list.extend(map(str, h5_files))  # Convert to string paths
+
+        # Companion teacher-logits .h5, one per source file, in the SAME order.
+        # Path mirrors build_teacher_h5.py:
+        #   <teacher_labels_dir>/<dataset>/<split>/<source_stem>.h5
+        if teacher_on:
+            for h5 in h5_files:
+                companion = (
+                    Path(teacher_labels_dir)
+                    / names[iname]
+                    / dataset_type
+                    / (h5.stem + ".h5")
+                )
+                if not companion.is_file():
+                    raise FileNotFoundError(
+                        f"Missing teacher companion for {names[iname]}/{dataset_type}: "
+                        f"{companion} (run build_teacher_h5.py for this dataset/split)"
+                    )
+                teacher_file_list.append(str(companion))
 
         def _validate_index(arr, files):
             if arr.size == 0:
@@ -462,35 +493,11 @@ def load_data(
         "cms_bsm": 202,
     }
 
-    teacher_logits_arr = None
-    teacher_lookup = None
-    if teacher_labels_dir is not None and teacher_tag is not None:
-        pattern = f"outputs_{teacher_tag}_{dataset_name}_{dataset_type}_*.npz"
-        npz_files = sorted(Path(teacher_labels_dir).glob(pattern))
-        if not npz_files:
-            raise ValueError(
-                f"No teacher label files found matching {pattern} in {teacher_labels_dir}"
-            )
-        logits_parts, keys_parts = [], []
-        for npz_path in npz_files:
-            data_npz = np.load(npz_path)
-            if "logits" not in data_npz or "sample_keys" not in data_npz:
-                raise ValueError(
-                    f"{npz_path} is missing 'logits' or 'sample_keys'. "
-                    "Re-run evaluate after the KD changes to produce them."
-                )
-            logits_parts.append(data_npz["logits"].astype(np.float32))
-            keys_parts.append(data_npz["sample_keys"])
-        teacher_logits_arr = np.concatenate(logits_parts, axis=0)
-        sample_keys = np.concatenate(keys_parts, axis=0)
-        teacher_lookup = {
-            (int(k[0]), int(k[1])): i for i, k in enumerate(sample_keys)
-        }
-        if rank == 0:
-            print(
-                f"Loaded teacher logits: {teacher_logits_arr.shape[0]} samples "
-                f"from {len(npz_files)} files ({pattern})"
-            )
+    if teacher_on and rank == 0:
+        print(
+            f"Teacher logits: {len(teacher_file_list)} companion .h5 files "
+            f"(tag={teacher_tag}, lazily read per sample)"
+        )
 
     data = HEPDataset(
         file_list,
@@ -504,8 +511,7 @@ def load_data(
         clip_inputs=clip_inputs,
         mode=mode,
         nevts=nevts,
-        teacher_logits_arr=teacher_logits_arr,
-        teacher_lookup=teacher_lookup,
+        teacher_file_paths=teacher_file_list,
     )
 
     loader = DataLoader(
