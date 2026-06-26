@@ -42,6 +42,18 @@ def get_model_parameters(model_size):
     return model_dict
 
 
+def get_deepsets_parameters(model_size):
+    """Architecture params for DeepSets (φ depth, ρ depth, hidden dim)."""
+    if model_size == "small":
+        return {"base_dim": 128, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "medium":
+        return {"base_dim": 256, "num_phi_layers": 4, "num_rho_layers": 3}
+    elif model_size == "large":
+        return {"base_dim": 512, "num_phi_layers": 5, "num_rho_layers": 4}
+    else:
+        raise ValueError(f"Invalid model size: {model_size}")
+
+
 def print_metrics(y_preds_np, y_np, thresholds=[0.3, 0.5], background_class=0):
     # Compute multiclass AUC
     auc_ovo = metrics.roc_auc_score(

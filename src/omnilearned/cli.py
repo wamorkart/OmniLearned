@@ -105,6 +105,13 @@ def train(
     distill_alpha: float = typer.Option(0.5, help="Weight for task loss"),
     distill_beta: float = typer.Option(0.5, help="Weight for KL distillation"),
     distill_T: float = typer.Option(4.0, help="Temperature for KL distillation"),
+    distill_teacher_slice: str = typer.Option(
+        "",
+        help="Column slice of teacher logits for KD, e.g. '2:12' to use columns "
+             "2-11 from a 210-class pretrained teacher for a 10-class student. "
+             "Default '' keeps all columns.",
+    ),
+    arch: str = typer.Option("pet2", help="Student architecture: pet2 or deep-sets"),
 ):
     run_training(
         outdir,
@@ -159,6 +166,7 @@ def train(
         distill_alpha=distill_alpha,
         distill_beta=distill_beta,
         distill_T=distill_T,
+        distill_teacher_slice=distill_teacher_slice,
     )
 
 

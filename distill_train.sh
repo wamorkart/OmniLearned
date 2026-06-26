@@ -1,8 +1,19 @@
 #load libs
+module load conda
+conda activate /global/homes/t/twamorka/omnilearned-clean/env
 module load pytorch
 
 # for DDP
 export MASTER_ADDR=$(hostname)
+
+# Reduce NCCL collective timeout from the default 30 min to 10 min so a
+# rank divergence (e.g. wandb network stall, CFS h5 read hang) fails fast
+# and the distill_loop.sh outer loop can resubmit while time remains.
+# NCCL_DEBUG=WARN prints one-line summaries on collective failures without
+# the full INFO flood; bump to INFO if you need the per-op sequence numbers.
+export NCCL_TIMEOUT=600000
+export NCCL_DEBUG=WARN
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 
 # Offline KD: small student distilled FROM SCRATCH against the large (pretrain_l)
 # teacher logits stored as lazily-read companion .h5 files.
@@ -23,12 +34,12 @@ cmd="omnilearned train \
   --use-pid --use-add --use-event-loss --interaction \
   --feature-drop 0.1 \
   --batch 128 --iterations 1000 --epoch 500 \
-  --num-workers 32 \
+  --num-workers 4 \
   --distill \
   --teacher-labels-dir $TEACHER_DIR \
   --teacher-tag pretrain_l \
   --distill-alpha 0.5 --distill-beta 0.5 --distill-t 4 \
-  --wandb"
+  --wandb --resuming"
 
 set -x
 srun -l -u \

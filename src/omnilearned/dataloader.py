@@ -4,12 +4,50 @@ import h5py
 import shutil
 from argparse import ArgumentParser
 from torch.utils.data import Dataset, DataLoader
+from collections import OrderedDict
 import requests
 import re
 import os
 from urllib.parse import urljoin
 import numpy as np
 from pathlib import Path
+
+
+class _LRUFileCache:
+    """Bounded LRU cache for h5py.File handles.
+
+    Without a cap, persistent DataLoader workers accumulate an open handle
+    for every file they visit. With random pretrain shuffling across thousands
+    of companion files this exhausts node RAM. maxsize=128 keeps at most 128
+    handles per worker (256 total with source+teacher) while absorbing most
+    locality in the random-access pattern.
+    """
+
+    def __init__(self, maxsize=128):
+        self._cache = OrderedDict()
+        self._maxsize = maxsize
+
+    def get(self, key, opener):
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        fh = opener(key)
+        if len(self._cache) >= self._maxsize:
+            _, old_fh = self._cache.popitem(last=False)
+            try:
+                old_fh.close()
+            except Exception:
+                pass
+        self._cache[key] = fh
+        return fh
+
+    def close_all(self):
+        for fh in self._cache.values():
+            try:
+                fh.close()
+            except Exception:
+                pass
+        self._cache.clear()
 
 
 def collate_point_cloud(batch, max_part=5000):
@@ -152,7 +190,11 @@ class HEPDataset(Dataset):
         self.label_shift = label_shift
 
         self.file_paths = file_paths
-        self._file_cache = {}  # lazy cache for open h5py.File handles
+        # Size the LRU to hold every source file so handles opened during
+        # epoch 1 are never evicted. With persistent_workers=True each worker
+        # keeps its handles warm for the entire training run.
+        n_files = max(128, len(file_paths) if file_paths else 128)
+        self._file_cache = _LRUFileCache(maxsize=n_files)
         self.file_indices = file_indices
         self.clip_inputs = clip_inputs
         self.mode = mode
@@ -161,7 +203,8 @@ class HEPDataset(Dataset):
             self.nevts = len(self.file_indices)
 
         self.teacher_file_paths = teacher_file_paths
-        self._teacher_cache = {}  # lazy cache for open companion h5py.File handles
+        n_teacher = max(128, len(teacher_file_paths) if teacher_file_paths else 128)
+        self._teacher_cache = _LRUFileCache(maxsize=n_teacher)
 
         # random.shuffle(self.file_indices)  # Shuffle data entries globally
 
@@ -169,19 +212,19 @@ class HEPDataset(Dataset):
         return min(self.nevts, len(self.file_indices))
 
     def _get_file(self, file_idx):
-        # Get the file handle from cache; open it if it’s not already open.
-        if file_idx not in self._file_cache:
-            file_path = self.file_paths[file_idx]
-            self._file_cache[file_idx] = h5py.File(file_path, "r")
-        return self._file_cache[file_idx]
+        # rdcc_nbytes=0: single random-row reads get no benefit from h5py’s
+        # default 1 MB per-dataset chunk cache; disabling it saves ~1 MB per
+        # open handle, which matters when the LRU holds up to 128 handles.
+        return self._file_cache.get(
+            file_idx,
+            lambda idx: h5py.File(self.file_paths[idx], "r", rdcc_nbytes=0),
+        )
 
     def _get_teacher_file(self, file_idx):
-        # Lazily open the companion teacher-logits h5 for this source file.
-        if file_idx not in self._teacher_cache:
-            self._teacher_cache[file_idx] = h5py.File(
-                self.teacher_file_paths[file_idx], "r"
-            )
-        return self._teacher_cache[file_idx]
+        return self._teacher_cache.get(
+            file_idx,
+            lambda idx: h5py.File(self.teacher_file_paths[idx], "r", rdcc_nbytes=0),
+        )
 
     def __getitem__(self, idx):
         file_idx, sample_idx = self.file_indices[idx]
@@ -249,12 +292,8 @@ class HEPDataset(Dataset):
         return sample
 
     def __del__(self):
-        # Clean up: close all cached file handles.
-        for f in list(self._file_cache.values()) + list(self._teacher_cache.values()):
-            try:
-                f.close()
-            except Exception as e:
-                print(f"Error closing file: {e}")
+        self._file_cache.close_all()
+        self._teacher_cache.close_all()
 
 
 def load_data(
@@ -327,7 +366,7 @@ def load_data(
     dataset_paths = [os.path.join(path, name, type) for name in names for type in types]
 
     file_list = []
-    file_indices = []
+    file_index_parts = []
     index_shift = 0
     teacher_on = teacher_labels_dir is not None and teacher_tag is not None
     teacher_file_list = [] if teacher_on else None
@@ -479,10 +518,21 @@ def load_data(
             total = len(indices_arr)
             indices = indices_arr[total * rank // size : total * (rank + 1) // size]
 
-        file_indices.extend(
-            (file_idx + index_shift, sample_idx) for file_idx, sample_idx in indices
-        )
+        # Keep the index as a compact numpy array, NOT a Python list of tuples.
+        # The full pretrain index is ~1e9 rows: as int32 that's ~8 GB, but as a
+        # list of (int, int) tuples it balloons to ~75 GB and, once forked into
+        # num_workers dataloader processes, COW-copies per object and OOMs the
+        # node. Shift the file-id column in place; concatenate once after the loop.
+        shifted = np.asarray(indices, dtype=np.int32).copy()
+        shifted[:, 0] += index_shift
+        file_index_parts.append(shifted)
         index_shift += len(h5_files)
+
+    file_indices = (
+        np.concatenate(file_index_parts)
+        if file_index_parts
+        else np.empty((0, 2), dtype=np.int32)
+    )
 
     # Shift labels if they are not used for pretrain
     label_shift = {
@@ -522,6 +572,7 @@ def load_data(
         sampler=None,
         num_workers=num_workers,
         drop_last=False,
+        persistent_workers=num_workers > 0,
         collate_fn=collate_point_cloud,
     )
     return loader

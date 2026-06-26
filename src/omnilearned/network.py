@@ -607,6 +607,225 @@ class PET_body(nn.Module):
         return x
 
 
+class DeepSetsBody(nn.Module):
+    """Per-particle φ MLP + masked mean pooling."""
+
+    def __init__(
+        self,
+        input_dim,
+        base_dim=128,
+        num_layers=3,
+        mlp_ratio=2,
+        mlp_drop=0.0,
+        pid=False,
+        pid_dim=9,
+        add_info=False,
+        add_dim=4,
+        conditional=False,
+        cond_dim=3,
+        norm_layer=DynamicTanh,
+        act_layer=nn.GELU,
+    ):
+        super().__init__()
+        self.pid = pid
+        self.add_info = add_info
+        self.conditional = conditional
+
+        self.embed = MLP(
+            input_dim,
+            int(mlp_ratio * base_dim),
+            out_features=base_dim,
+            norm_layer=norm_layer,
+            act_layer=act_layer,
+        )
+
+        # pre-norm residual φ blocks
+        self.phi_norms = nn.ModuleList(
+            [norm_layer(base_dim) for _ in range(num_layers - 1)]
+        )
+        self.phi_blocks = nn.ModuleList(
+            [
+                MLP(
+                    base_dim,
+                    int(mlp_ratio * base_dim),
+                    out_features=base_dim,
+                    act_layer=act_layer,
+                    drop=mlp_drop,
+                )
+                for _ in range(num_layers - 1)
+            ]
+        )
+
+        if pid:
+            self.pid_embed = nn.Embedding(pid_dim, base_dim, padding_idx=0)
+
+        if add_info:
+            self.add_embed = MLP(
+                add_dim,
+                int(mlp_ratio * base_dim),
+                out_features=base_dim,
+                act_layer=act_layer,
+            )
+
+        if conditional:
+            self.cond_embed = MLP(
+                cond_dim,
+                int(mlp_ratio * base_dim),
+                out_features=base_dim,
+                act_layer=act_layer,
+            )
+
+    def forward(self, x, cond=None, pid=None, add_info=None):
+        mask = (x[:, :, 2:3] != 0).float()  # (B, N, 1)
+
+        h = self.embed(x) * mask  # (B, N, D)
+
+        if pid is not None and self.pid:
+            h = h + self.pid_embed(pid) * mask
+        if add_info is not None and self.add_info:
+            h = h + self.add_embed(add_info) * mask
+
+        for norm, phi in zip(self.phi_norms, self.phi_blocks):
+            h = h + phi(norm(h)) * mask  # pre-norm residual; padded stays 0
+
+        n_valid = mask.sum(dim=1).clamp(min=1.0)  # (B, 1)
+        z = (h * mask).sum(dim=1) / n_valid        # masked mean pool → (B, D)
+
+        if cond is not None and self.conditional:
+            z = z + self.cond_embed(cond)
+
+        return z
+
+
+class DeepSetsHead(nn.Module):
+    """Global ρ MLP + linear classifier output."""
+
+    def __init__(
+        self,
+        base_dim=128,
+        num_layers=2,
+        mlp_ratio=2,
+        mlp_drop=0.0,
+        num_classes=2,
+        norm_layer=DynamicTanh,
+        act_layer=nn.GELU,
+    ):
+        super().__init__()
+
+        self.rho_norms = nn.ModuleList(
+            [norm_layer(base_dim) for _ in range(num_layers)]
+        )
+        self.rho = nn.ModuleList(
+            [
+                MLP(
+                    base_dim,
+                    int(mlp_ratio * base_dim),
+                    out_features=base_dim,
+                    act_layer=act_layer,
+                    drop=mlp_drop,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.out = nn.Linear(base_dim, num_classes)
+
+    def forward(self, z):
+        for norm, rho in zip(self.rho_norms, self.rho):
+            z = z + rho(norm(z))
+        return self.out(z)
+
+
+class DeepSets(nn.Module):
+    """
+    Deep Sets classifier student for distillation from PET2.
+
+    Drop-in replacement for PET2 in classifier/pretrain mode: same forward()
+    output dict and same .body / .classifier / .generator attributes so
+    save_checkpoint / restore_checkpoint work unchanged.
+    """
+
+    def __init__(
+        self,
+        input_dim,
+        num_classes=2,
+        base_dim=128,
+        num_phi_layers=3,
+        num_rho_layers=2,
+        mlp_ratio=2,
+        mlp_drop=0.0,
+        mode="classifier",
+        pid=False,
+        pid_dim=9,
+        add_info=False,
+        add_dim=4,
+        conditional=False,
+        cond_dim=3,
+        norm_layer=DynamicTanh,
+        act_layer=nn.GELU,
+    ):
+        super().__init__()
+        if mode not in ["classifier", "pretrain"]:
+            raise ValueError(
+                f"DeepSets supports classifier and pretrain modes, got '{mode}'"
+            )
+        self.mode = mode
+        self.generator = None  # checkpoint compatibility with PET2 interface
+
+        self.body = DeepSetsBody(
+            input_dim=input_dim,
+            base_dim=base_dim,
+            num_layers=num_phi_layers,
+            mlp_ratio=mlp_ratio,
+            mlp_drop=mlp_drop,
+            pid=pid,
+            pid_dim=pid_dim,
+            add_info=add_info,
+            add_dim=add_dim,
+            conditional=conditional,
+            cond_dim=cond_dim,
+            norm_layer=norm_layer,
+            act_layer=act_layer,
+        )
+
+        self.classifier = DeepSetsHead(
+            base_dim=base_dim,
+            num_layers=num_rho_layers,
+            mlp_ratio=mlp_ratio,
+            mlp_drop=mlp_drop,
+            num_classes=num_classes,
+            norm_layer=norm_layer,
+            act_layer=act_layer,
+        )
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+        self.apply(_init_weights)
+
+    def no_weight_decay(self):
+        return {"norm"}
+
+    def forward(self, x, y, cond=None, pid=None, add_info=None):
+        z = self.body(x, cond=cond, pid=pid, add_info=add_info)  # (B, D)
+        y_pred = self.classifier(z)                               # (B, num_classes)
+        return {
+            "y_pred": y_pred,
+            "y_perturb": None,
+            "z_pred": None,
+            "v": None,
+            "v_weight": None,
+            "x_body": None,
+            "z_body": None,
+            "alpha": torch.ones(x.shape[0], device=x.device),
+        }
+
+
 class MLPGEN(nn.Module):
     def __init__(
         self,

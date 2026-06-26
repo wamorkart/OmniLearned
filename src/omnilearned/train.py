@@ -2,7 +2,7 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-from omnilearned.network import PET2
+from omnilearned.network import PET2, DeepSets
 from omnilearned.dataloader import load_data
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -21,6 +21,7 @@ from omnilearned.utils import (
     save_checkpoint,
     restore_checkpoint,
     get_model_parameters,
+    get_deepsets_parameters,
 )
 
 import time
@@ -64,6 +65,7 @@ def train_step(
     distill_alpha=0.5,
     distill_beta=0.5,
     distill_T=4.0,
+    distill_teacher_slice=None,
 ):
     model.train()
 
@@ -126,6 +128,8 @@ def train_step(
                         "generate-labels was run for this split."
                     )
                 teacher_logits = batch["teacher_logits"].to(device)
+                if distill_teacher_slice is not None:
+                    teacher_logits = teacher_logits[:, distill_teacher_slice[0]:distill_teacher_slice[1]]
                 loss_kd = get_distill_loss(
                     outputs["y_pred"], teacher_logits, distill_T=distill_T
                 )
@@ -174,6 +178,7 @@ def val_step(
     distill_alpha=0.5,
     distill_beta=0.5,
     distill_T=4.0,
+    distill_teacher_slice=None,
 ):
     model.eval()
 
@@ -228,6 +233,8 @@ def val_step(
                         "Validation distillation enabled but no teacher_logits in batch."
                     )
                 teacher_logits = batch["teacher_logits"].to(device)
+                if distill_teacher_slice is not None:
+                    teacher_logits = teacher_logits[:, distill_teacher_slice[0]:distill_teacher_slice[1]]
                 loss_kd = get_distill_loss(
                     outputs["y_pred"], teacher_logits, distill_T=distill_T
                 )
@@ -268,6 +275,7 @@ def train_model(
     distill_alpha=0.5,
     distill_beta=0.5,
     distill_T=4.0,
+    distill_teacher_slice=None,
 ):
     checkpoint_name = get_checkpoint_name(save_tag)
 
@@ -308,6 +316,7 @@ def train_model(
             distill_alpha=distill_alpha,
             distill_beta=distill_beta,
             distill_T=distill_T,
+            distill_teacher_slice=distill_teacher_slice,
         )
         val_logs = val_step(
             model,
@@ -323,6 +332,7 @@ def train_model(
             distill_alpha=distill_alpha,
             distill_beta=distill_beta,
             distill_T=distill_T,
+            distill_teacher_slice=distill_teacher_slice,
         )
 
         losses["train_loss"].append(train_logs["loss"])
@@ -371,7 +381,7 @@ def train_model(
                     checkpoint_name,
                 )
 
-        if run is not None:
+        if run is not None and is_master_node():
             run.log(
                 {
                     **{f"train {key}": train_logs[key] for key in train_logs},
@@ -445,37 +455,62 @@ def run(
     distill_alpha: float = 0.5,
     distill_beta: float = 0.5,
     distill_T: float = 4.0,
+    distill_teacher_slice: str = "",
+    arch: str = "pet2",
 ):
     if distill and (not teacher_labels_dir or not teacher_tag):
         raise ValueError(
             "--distill requires both --teacher_labels_dir and --teacher_tag."
         )
 
+    _teacher_slice = None
+    if distill_teacher_slice:
+        parts = distill_teacher_slice.split(":")
+        _teacher_slice = (int(parts[0]), int(parts[1]))
+
     local_rank, rank, size = ddp_setup()
 
-    model_params = get_model_parameters(model_size)
     # set up model
-    model = PET2(
-        input_dim=num_feat,
-        use_int=interaction,
-        local_int=local_interaction,
-        int_type=interaction_type,
-        conditional=conditional,
-        cond_dim=num_cond,
-        pid=use_pid,
-        pid_dim=pid_dim,
-        add_info=use_add,
-        add_dim=num_add,
-        mode=mode,
-        num_classes=num_classes,
-        num_gen_classes=num_gen_classes,
-        mlp_drop=mlp_drop,
-        attn_drop=attn_drop,
-        feature_drop=feature_drop,
-        num_coord=num_coord,
-        K=K,
-        **model_params,
-    )
+    if arch == "pet2":
+        model_params = get_model_parameters(model_size)
+        model = PET2(
+            input_dim=num_feat,
+            use_int=interaction,
+            local_int=local_interaction,
+            int_type=interaction_type,
+            conditional=conditional,
+            cond_dim=num_cond,
+            pid=use_pid,
+            pid_dim=pid_dim,
+            add_info=use_add,
+            add_dim=num_add,
+            mode=mode,
+            num_classes=num_classes,
+            num_gen_classes=num_gen_classes,
+            mlp_drop=mlp_drop,
+            attn_drop=attn_drop,
+            feature_drop=feature_drop,
+            num_coord=num_coord,
+            K=K,
+            **model_params,
+        )
+    elif arch == "deep-sets":
+        ds_params = get_deepsets_parameters(model_size)
+        model = DeepSets(
+            input_dim=num_feat,
+            num_classes=num_classes,
+            pid=use_pid,
+            pid_dim=pid_dim,
+            add_info=use_add,
+            add_dim=num_add,
+            conditional=conditional,
+            cond_dim=num_cond,
+            mode=mode,
+            mlp_drop=mlp_drop,
+            **ds_params,
+        )
+    else:
+        raise ValueError(f"Unknown arch '{arch}'. Choose from: pet2, deep-sets")
 
     if rank == 0:
         d = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -681,6 +716,7 @@ def run(
         distill_alpha=distill_alpha,
         distill_beta=distill_beta,
         distill_T=distill_T,
+        distill_teacher_slice=_teacher_slice,
     )
 
     dist.destroy_process_group()
