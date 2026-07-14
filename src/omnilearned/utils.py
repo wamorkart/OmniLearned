@@ -5,10 +5,18 @@ import torch
 import torch.nn as nn
 from typing import Tuple
 from copy import deepcopy
+from datetime import timedelta
 import torch.distributed as dist
 from torch.distributed import init_process_group, get_rank
 import torch.nn.functional as F
 import requests
+
+# Default NCCL collective timeout (30 min) is too tight for the pretrain-scale
+# distillation jobs: lazy per-sample HDF5 reads across thousands of companion
+# teacher-logit shards occasionally stall one rank long enough to trip the
+# watchdog and force-abort the whole 16-GPU job. Widen it so a slow shard open
+# degrades throughput instead of killing hours of training.
+DDP_TIMEOUT = timedelta(minutes=90)
 
 
 def get_model_parameters(model_size):
@@ -573,10 +581,10 @@ def ddp_setup():
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "2900"
         os.environ["RANK"] = "0"
-        init_process_group(rank=0, world_size=1)
+        init_process_group(rank=0, world_size=1, timeout=DDP_TIMEOUT)
         rank = local_rank = 0
     else:
-        init_process_group(init_method="env://")
+        init_process_group(init_method="env://", timeout=DDP_TIMEOUT)
         # overwrite variables with correct values from env
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = get_rank()
