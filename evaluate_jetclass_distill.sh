@@ -1,0 +1,42 @@
+#!/bin/bash
+# Evaluate the distilled JetClass student on the test split.
+# Writes per-rank logits to OUTPUT_DIR as outputs_<tag>_jetclass_test_<rank>.npz.
+#
+# Run inside an salloc GPU interactive job, e.g.:
+#   salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 \
+#          --gpus-per-node 4 -A m3246 bash evaluate_jetclass_distill.sh
+
+module load conda
+conda activate /global/homes/t/twamorka/omnilearned-clean/env
+module load pytorch
+
+export MASTER_ADDR=$(hostname)
+
+CHECKPOINT_DIR=/pscratch/sd/t/twamorka/omnilearned/checkpoints/
+OUTPUT_DIR=/pscratch/sd/t/twamorka/omnilearned/eval/jetclass_distill/
+SAVE_TAG=distill_jetclass_s_pretrain_l_a05_T4_100epochs
+DATASET_TYPE=${DATASET_TYPE:-test}
+
+mkdir -p "$OUTPUT_DIR"
+
+cmd="omnilearned evaluate \
+    -i $CHECKPOINT_DIR \
+    -o $OUTPUT_DIR \
+    --save-tag $SAVE_TAG \
+    --dataset jetclass \
+    --path /global/cfs/cdirs/m4567/www/ \
+    --size small \
+    --num-feat 9 \
+    --interaction \
+    --local-interaction \
+    --num-classes 10 \
+    --batch 128 \
+    --num-workers 4 \
+    --dataset-type $DATASET_TYPE"
+
+set -x
+srun -l -u \
+    bash -c "
+    source export_ddp.sh
+    $cmd
+    "
