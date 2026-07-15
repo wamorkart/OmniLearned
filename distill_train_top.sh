@@ -1,6 +1,6 @@
 #load libs
 module load conda
-conda activate /global/homes/t/twamorka/omnilearned-clean/env
+conda activate ol_distill
 module load pytorch
 
 # for DDP
@@ -16,7 +16,7 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 TEACHER_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion_fine_tune_top_l
 
 cmd="omnilearned train \
-  -o /pscratch/sd/t/twamorka/omnilearned/checkpoints/ \
+  -o /pscratch/sd/m/mbenyas/ \
   --save-tag distill_top_small_scratch_a05_T4 \
   --dataset top --mode classifier --num-classes 2 \
   --path /global/cfs/cdirs/m4567/www/ \
