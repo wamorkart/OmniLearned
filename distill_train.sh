@@ -3,15 +3,22 @@ module load conda
 conda activate /global/homes/t/twamorka/omnilearned-clean/env
 module load pytorch
 
+# HDF5 file locking causes slow/hanging opens over Lustre-backed CFS; already
+# worked around this way elsewhere in the repo (camels.sh, quijote.sh) but
+# missing here, where lazy per-sample companion .h5 reads make it most likely
+# to matter.
+export HDF5_USE_FILE_LOCKING=FALSE
+
 # for DDP
 export MASTER_ADDR=$(hostname)
 
-# Reduce NCCL collective timeout from the default 30 min to 10 min so a
-# rank divergence (e.g. wandb network stall, CFS h5 read hang) fails fast
-# and the distill_loop.sh outer loop can resubmit while time remains.
+# NCCL_TIMEOUT is not the knob that controls PyTorch's ProcessGroupNCCL watchdog
+# (confirmed: the Jul 3 crash still hit the 1,800,000ms/30min default despite this
+# being set to 600000) -- the watchdog timeout comes from the `timeout=` kwarg to
+# init_process_group(), set via DDP_TIMEOUT (90 min) in utils.py:ddp_setup(). That
+# widened timeout is the actual fix for rank stalls from lazy CFS h5 companion reads.
 # NCCL_DEBUG=WARN prints one-line summaries on collective failures without
 # the full INFO flood; bump to INFO if you need the per-op sequence numbers.
-export NCCL_TIMEOUT=600000
 export NCCL_DEBUG=WARN
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 
@@ -27,11 +34,11 @@ TEACHER_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion
 
 cmd="omnilearned train \
   -o /pscratch/sd/t/twamorka/omnilearned/checkpoints/ \
-  --save-tag distill_pretrain_s_scratch_a05_T4 \
+  --save-tag distill_pretrain_s_scratch_a05_b05_T4 \
   --dataset pretrain --mode pretrain --num-classes 210 \
   --path /global/cfs/cdirs/m4567/www/ \
   --size small \
-  --use-pid --use-add --use-event-loss --interaction \
+  --use-pid --use-add --use-event-loss --interaction --local-interaction \
   --feature-drop 0.1 \
   --batch 128 --iterations 1000 --epoch 500 \
   --num-workers 4 \
