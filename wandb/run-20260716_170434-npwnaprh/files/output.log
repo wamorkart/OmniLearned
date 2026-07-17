@@ -1,0 +1,41 @@
+Epoch [7/15] Loss: 0.3632, Val Loss: 0.3693 , lr: 4.322727117869945e-08
+Class Loss: 0.3632, Class Val Loss: 0.3693
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 6 is 1306.5341391563416 sec
+replacing best checkpoint ...
+Epoch 7 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_qg_pretrain_l.pt
+Epoch [8/15] Loss: 0.3633, Val Loss: 0.3690 , lr: 9.549150281252621e-08
+Class Loss: 0.3633, Class Val Loss: 0.3690
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 7 is 1306.5203444957733 sec
+replacing best checkpoint ...
+Epoch 8 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_qg_pretrain_l.pt
+Epoch [9/15] Loss: 0.3632, Val Loss: 0.3690 , lr: 1.6543469682057077e-07
+Class Loss: 0.3632, Class Val Loss: 0.3690
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 8 is 1306.154865026474 sec
+Epoch [10/15] Loss: 0.3631, Val Loss: 0.3692 , lr: 2.499999999999998e-07
+Class Loss: 0.3631, Class Val Loss: 0.3692
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 9 is 1306.057763338089 sec
+Epoch [11/15] Loss: 0.3631, Val Loss: 0.3700 , lr: 3.454915028125262e-07
+Class Loss: 0.3631, Class Val Loss: 0.3700
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 10 is 2152.0543835163116 sec
+Epoch [12/15] Loss: 0.3631, Val Loss: 0.3700 , lr: 4.477357683661729e-07
+Class Loss: 0.3631, Class Val Loss: 0.3700
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 11 is 1306.009914636612 sec
+Epoch [13/15] Loss: 0.3629, Val Loss: 0.3701 , lr: 5.52264231633827e-07
+Class Loss: 0.3629, Class Val Loss: 0.3701
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 12 is 1305.964641571045 sec
+Epoch [14/15] Loss: 0.3629, Val Loss: 0.3707 , lr: 6.545084971874735e-07
+Class Loss: 0.3629, Class Val Loss: 0.3707
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 13 is 1305.9577136039734 sec
+Epoch [15/15] Loss: 0.3628, Val Loss: 0.3704 , lr: 7.5e-07
+Class Loss: 0.3628, Class Val Loss: 0.3704
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 14 is 1306.1946160793304 sec
+Training Complete, best loss: 0.36895 at epoch 7!

@@ -7,7 +7,7 @@
 #          --gpus-per-node 4 -A m3246 bash fine_tune_qg_pretrain_l.sh
 
 module load conda
-conda activate /global/homes/t/twamorka/omnilearned-clean/env
+conda activate ol_distill
 module load pytorch
 
 export MASTER_ADDR=$(hostname)
@@ -17,7 +17,7 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cmd="omnilearned train \
-  -o /pscratch/sd/t/twamorka/omnilearned/checkpoints/ \
+  -o /pscratch/sd/m/mbenyas/ \
   --save-tag fine_tune_qg_pretrain_l \
   --pretrain-tag pretrain_l \
   --fine-tune \
@@ -26,7 +26,7 @@ cmd="omnilearned train \
   --size large \
   --use-pid \
   --interaction \
-  --batch 8 --epoch 5 --wd 10.0 --lr 1e-6 \
+  --batch 32 --epoch 15 --wd 10.0 --lr 1e-6 \
   --num-workers 4 \
   --wandb --resuming"
 set -x

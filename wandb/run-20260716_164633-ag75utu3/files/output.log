@@ -1,0 +1,440 @@
+Traceback (most recent call last):
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/bin/omnilearned", line 6, in <module>
+    sys.exit(app())
+             ^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/typer/main.py", line 1152, in __call__
+    raise e
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/typer/main.py", line 1135, in __call__
+    return get_command(self)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/click/core.py", line 1514, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/typer/core.py", line 794, in main
+    return _main(
+           ^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/typer/core.py", line 188, in _main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/click/core.py", line 1902, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/click/core.py", line 1298, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/click/core.py", line 853, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/typer/main.py", line 1514, in wrapper
+    return callback(**use_params)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/cli.py", line 116, in train
+    run_training(
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/train.py", line 694, in run
+    train_model(
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/train.py", line 299, in train_model
+    train_logs = train_step(
+                 ^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/train.py", line 105, in train_step
+    outputs = model(X, y, **model_kwargs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/parallel/distributed.py", line 1699, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/parallel/distributed.py", line 1524, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/network.py", line 170, in forward
+    x_body = self.body(x, cond, pid, add_info, torch.zeros_like(time))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/network.py", line 550, in forward
+    local_features, indices = self.local_physics(
+                              ^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/layers.py", line 410, in forward
+    x = blk(x, mask=mask_neighbors, attn_mask=attn_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/layers.py", line 512, in forward
+    x = x + self.mlp(self.norm2(x), mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/layers.py", line 445, in forward
+    x = self.norm(x)
+        ^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site-packages/omnilearned/layers.py", line 36, in forward
+    x = torch.tanh(self.alpha * x)
+                   ~~~~~~~~~~~^~~
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1000.00 MiB. GPU 0 has a total capacity of 39.49 GiB of which 808.25 MiB is free. Including non-PyTorch memory, this process has 38.69 GiB memory in use. Of the allocated memory 37.82 GiB is allocated by PyTorch, and 101.17 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+[rank0]: ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/cli.py:116 in train                                     │
+[rank0]: │                                                                              │
+[rank0]: │   113 │   ),                                                                 │
+[rank0]: │   114 │   arch: str = typer.Option("pet2", help="Student architecture: pet2  │
+[rank0]: │       or deep-sets"),                                                        │
+[rank0]: │   115 ):                                                                     │
+[rank0]: │ ❱ 116 │   run_training(                                                      │
+[rank0]: │   117 │   │   outdir,                                                        │
+[rank0]: │   118 │   │   save_tag,                                                      │
+[rank0]: │   119 │   │   pretrain_tag,                                                  │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/train.py:694 in run                                     │
+[rank0]: │                                                                              │
+[rank0]: │   691 │   else:                                                              │
+[rank0]: │   692 │   │   loss_gen = nn.MSELoss(reduction="none")                        │
+[rank0]: │   693 │                                                                      │
+[rank0]: │ ❱ 694 │   train_model(                                                       │
+[rank0]: │   695 │   │   model,                                                         │
+[rank0]: │   696 │   │   train_loader,                                                  │
+[rank0]: │   697 │   │   val_loader,                                                    │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/train.py:299 in train_model                             │
+[rank0]: │                                                                              │
+[rank0]: │   296 │   │   │   train_loader.sampler.set_epoch(epoch)                      │
+[rank0]: │   297 │   │                                                                  │
+[rank0]: │   298 │   │   start = time.time()                                            │
+[rank0]: │ ❱ 299 │   │   train_logs = train_step(                                       │
+[rank0]: │   300 │   │   │   model,                                                     │
+[rank0]: │   301 │   │   │   train_loader,                                              │
+[rank0]: │   302 │   │   │   loss_class,                                                │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/train.py:105 in train_step                              │
+[rank0]: │                                                                              │
+[rank0]: │   102 │   │   │   "cuda:{}".format(device) if torch.cuda.is_available() else │
+[rank0]: │       "cpu",                                                                 │
+[rank0]: │   103 │   │   │   enabled=use_amp,                                           │
+[rank0]: │   104 │   │   ):                                                             │
+[rank0]: │ ❱ 105 │   │   │   outputs = model(X, y, **model_kwargs)                      │
+[rank0]: │   106 │   │   │   loss = get_loss(                                           │
+[rank0]: │   107 │   │   │   │   outputs,                                               │
+[rank0]: │   108 │   │   │   │   y,                                                     │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/parallel/distributed.py:1699 in forward                              │
+[rank0]: │                                                                              │
+[rank0]: │   1696 │   │   │   output = (                                                │
+[rank0]: │   1697 │   │   │   │   self.module.forward(*inputs, **kwargs)                │
+[rank0]: │   1698 │   │   │   │   if self._delay_all_reduce_all_params                  │
+[rank0]: │ ❱ 1699 │   │   │   │   else self._run_ddp_forward(*inputs, **kwargs)         │
+[rank0]: │   1700 │   │   │   )                                                         │
+[rank0]: │   1701 │   │   │   return self._post_forward(output)                         │
+[rank0]: │   1702                                                                       │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/parallel/distributed.py:1524 in _run_ddp_forward                     │
+[rank0]: │                                                                              │
+[rank0]: │   1521 │   │   │   return self.module(*inputs, **kwargs)  # type:            │
+[rank0]: │        ignore[index]                                                         │
+[rank0]: │   1522 │   │   else:                                                         │
+[rank0]: │   1523 │   │   │   with self._inside_ddp_forward():                          │
+[rank0]: │ ❱ 1524 │   │   │   │   return self.module(*inputs, **kwargs)  # type:        │
+[rank0]: │        ignore[index]                                                         │
+[rank0]: │   1525 │                                                                     │
+[rank0]: │   1526 │   def _clear_grad_buffer(self):                                     │
+[rank0]: │   1527 │   │   # Making param.grad points to the grad buffers before         │
+[rank0]: │        backward is based on the                                              │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/network.py:170 in forward                               │
+[rank0]: │                                                                              │
+[rank0]: │   167 │   │   │   "pretrain",                                                │
+[rank0]: │   168 │   │   │   "ftag",                                                    │
+[rank0]: │   169 │   │   ]:                                                             │
+[rank0]: │ ❱ 170 │   │   │   x_body = self.body(x, cond, pid, add_info,                 │
+[rank0]: │       torch.zeros_like(time))                                                │
+[rank0]: │   171 │   │   │                                                              │
+[rank0]: │   172 │   │   │   if self.mode in ["classifier", "pretrain", "regression",   │
+[rank0]: │       "ftag"]:                                                               │
+[rank0]: │   173 │   │   │   │   y_pred = self.classifier(x_body)                       │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/network.py:550 in forward                               │
+[rank0]: │                                                                              │
+[rank0]: │   547 │   │                                                                  │
+[rank0]: │   548 │   │   # Move away zero-padded entries                                │
+[rank0]: │   549 │   │   coord_shift = 999.0 * (~mask).float()                          │
+[rank0]: │ ❱ 550 │   │   local_features, indices = self.local_physics(                  │
+[rank0]: │   551 │   │   │   coord_shift + x[:, :, : self.num_coord], x, mask           │
+[rank0]: │   552 │   │   )                                                              │
+[rank0]: │   553                                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/layers.py:410 in forward                                │
+[rank0]: │                                                                              │
+[rank0]: │   407 │   │   x = self.mlp(local_features) * mask_neighbors                  │
+[rank0]: │   408 │   │                                                                  │
+[rank0]: │   409 │   │   for ib, blk in enumerate(self.in_blocks):                      │
+[rank0]: │ ❱ 410 │   │   │   x = blk(x, mask=mask_neighbors, attn_mask=attn_mask)       │
+[rank0]: │   411 │   │   x = x.view((batch_size, num_points, self.K, -1))               │
+[rank0]: │   412 │   │   mask_neighbors = mask_neighbors.view((batch_size, num_points,  │
+[rank0]: │       self.K, -1))                                                           │
+[rank0]: │   413 │   │   x = torch.sum(x, dim=2) / torch.sum(1e-9 + mask_neighbors,     │
+[rank0]: │       dim=2) * mask                                                          │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/layers.py:512 in forward                                │
+[rank0]: │                                                                              │
+[rank0]: │   509 │   │   │   )[0]                                                       │
+[rank0]: │   510 │   │   │   * mask                                                     │
+[rank0]: │   511 │   │   )                                                              │
+[rank0]: │ ❱ 512 │   │   x = x + self.mlp(self.norm2(x), mask)                          │
+[rank0]: │   513 │   │   return x                                                       │
+[rank0]: │   514                                                                        │
+[rank0]: │   515                                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/layers.py:445 in forward                                │
+[rank0]: │                                                                              │
+[rank0]: │   442 │   │   # Apply the first linear layer, activation, dropout, and norm  │
+[rank0]: │   443 │   │   x = self.fc1(x)                                                │
+[rank0]: │   444 │   │   x = self.act(x)                                                │
+[rank0]: │ ❱ 445 │   │   x = self.norm(x)                                               │
+[rank0]: │   446 │   │   x = self.drop(x)                                               │
+[rank0]: │   447 │   │   # Apply the second linear layer, norm, and dropout             │
+[rank0]: │   448 │   │   x = self.fc2(x)                                                │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1779 in _wrapped_call_impl                         │
+[rank0]: │                                                                              │
+[rank0]: │   1776 │   │   if self._compiled_call_impl is not None:                      │
+[rank0]: │   1777 │   │   │   return self._compiled_call_impl(*args, **kwargs)  # type: │
+[rank0]: │        ignore[misc]                                                          │
+[rank0]: │   1778 │   │   else:                                                         │
+[rank0]: │ ❱ 1779 │   │   │   return self._call_impl(*args, **kwargs)                   │
+[rank0]: │   1780 │                                                                     │
+[rank0]: │   1781 │   # torchrec tests the code consistency with the following code     │
+[rank0]: │   1782 │   # fmt: off                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /global/common/software/nersc9/pytorch/2.11.0/lib/python3.12/site-packages/t │
+[rank0]: │ orch/nn/modules/module.py:1790 in _call_impl                                 │
+[rank0]: │                                                                              │
+[rank0]: │   1787 │   │   if not (self._backward_hooks or self._backward_pre_hooks or   │
+[rank0]: │        self._forward_hooks or self._forward_pre_hooks                        │
+[rank0]: │   1788 │   │   │   │   or _global_backward_pre_hooks or                      │
+[rank0]: │        _global_backward_hooks                                                │
+[rank0]: │   1789 │   │   │   │   or _global_forward_hooks or                           │
+[rank0]: │        _global_forward_pre_hooks):                                           │
+[rank0]: │ ❱ 1790 │   │   │   return forward_call(*args, **kwargs)                      │
+[rank0]: │   1791 │   │                                                                 │
+[rank0]: │   1792 │   │   result = None                                                 │
+[rank0]: │   1793 │   │   called_always_called_hooks = set()                            │
+[rank0]: │                                                                              │
+[rank0]: │ /global/homes/m/mbenyas/.local/perlmutter/pytorch2.11.0/lib/python3.12/site- │
+[rank0]: │ packages/omnilearned/layers.py:36 in forward                                 │
+[rank0]: │                                                                              │
+[rank0]: │    33 │   │   self.weight = nn.Parameter(torch.ones(normalized_shape))       │
+[rank0]: │    34 │                                                                      │
+[rank0]: │    35 │   def forward(self, x):                                              │
+[rank0]: │ ❱  36 │   │   x = torch.tanh(self.alpha * x)                                 │
+[rank0]: │    37 │   │   if self.channels_last:                                         │
+[rank0]: │    38 │   │   │   x = x * self.weight                                        │
+[rank0]: │    39 │   │   else:                                                          │
+[rank0]: ╰──────────────────────────────────────────────────────────────────────────────╯
+[rank0]: OutOfMemoryError: CUDA out of memory. Tried to allocate 1000.00 MiB. GPU 0 has a
+[rank0]: total capacity of 39.49 GiB of which 808.25 MiB is free. Including non-PyTorch
+[rank0]: memory, this process has 38.69 GiB memory in use. Of the allocated memory 37.82
+[rank0]: GiB is allocated by PyTorch, and 101.17 MiB is reserved by PyTorch but
+[rank0]: unallocated. If reserved but unallocated memory is large try setting
+[rank0]: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See
+[rank0]: documentation for Memory Management
+[rank0]: (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-wi
+[rank0]: th-pytorch-cuda-alloc-conf)
