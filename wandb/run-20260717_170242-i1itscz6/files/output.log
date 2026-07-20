@@ -1,0 +1,140 @@
+Epoch [7/50] Loss: 0.3732, Val Loss: 0.3767 , lr: 0.00048244412147206283
+Class Loss: 0.3732, Class Val Loss: 0.3767
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0166, KD Val Loss: 0.0149
+Time taken for epoch 6 is 197.93162274360657 sec
+Epoch [8/50] Loss: 0.3722, Val Loss: 0.3750 , lr: 0.0004762067631165049
+Class Loss: 0.3722, Class Val Loss: 0.3750
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0143, KD Val Loss: 0.0138
+Time taken for epoch 7 is 194.12958574295044 sec
+Epoch [9/50] Loss: 0.3710, Val Loss: 0.3748 , lr: 0.0004690766700109659
+Class Loss: 0.3710, Class Val Loss: 0.3748
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0129, KD Val Loss: 0.0118
+Time taken for epoch 8 is 209.61647057533264 sec
+Epoch [10/50] Loss: 0.3700, Val Loss: 0.3735 , lr: 0.00046108198137550377
+Class Loss: 0.3700, Class Val Loss: 0.3735
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0119, KD Val Loss: 0.0102
+Time taken for epoch 9 is 193.03440022468567 sec
+Epoch [11/50] Loss: 0.3696, Val Loss: 0.3740 , lr: 0.0004522542485937369
+Class Loss: 0.3696, Class Val Loss: 0.3740
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0111, KD Val Loss: 0.0115
+Time taken for epoch 10 is 197.1115403175354 sec
+Epoch [12/50] Loss: 0.3689, Val Loss: 0.3730 , lr: 0.0004426283106939473
+Class Loss: 0.3689, Class Val Loss: 0.3730
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0106, KD Val Loss: 0.0092
+Time taken for epoch 11 is 190.686461687088 sec
+Epoch [13/50] Loss: 0.3683, Val Loss: 0.3734 , lr: 0.00043224215685535287
+Class Loss: 0.3683, Class Val Loss: 0.3734
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0101, KD Val Loss: 0.0109
+Time taken for epoch 12 is 194.38116431236267 sec
+Epoch [14/50] Loss: 0.3674, Val Loss: 0.3728 , lr: 0.0004211367764821722
+Class Loss: 0.3674, Class Val Loss: 0.3728
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0097, KD Val Loss: 0.0099
+Time taken for epoch 13 is 194.13067364692688 sec
+Epoch [15/50] Loss: 0.3671, Val Loss: 0.3744 , lr: 0.00040935599743717243
+Class Loss: 0.3671, Class Val Loss: 0.3744
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0094, KD Val Loss: 0.0111
+Time taken for epoch 14 is 194.27673244476318 sec
+Epoch [16/50] Loss: 0.3664, Val Loss: 0.3726 , lr: 0.0003969463130731183
+Class Loss: 0.3664, Class Val Loss: 0.3726
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0091, KD Val Loss: 0.0092
+Time taken for epoch 15 is 190.43756198883057 sec
+Epoch [17/50] Loss: 0.3656, Val Loss: 0.3729 , lr: 0.00038395669874474915
+Class Loss: 0.3656, Class Val Loss: 0.3729
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0088, KD Val Loss: 0.0089
+Time taken for epoch 16 is 187.1720588207245 sec
+Epoch [18/50] Loss: 0.3649, Val Loss: 0.3726 , lr: 0.0003704384185254288
+Class Loss: 0.3649, Class Val Loss: 0.3726
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0086, KD Val Loss: 0.0090
+Time taken for epoch 17 is 189.33143877983093 sec
+Epoch [19/50] Loss: 0.3642, Val Loss: 0.3734 , lr: 0.0003564448228912682
+Class Loss: 0.3642, Class Val Loss: 0.3734
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0084, KD Val Loss: 0.0091
+Time taken for epoch 18 is 189.6214520931244 sec
+Epoch [20/50] Loss: 0.3639, Val Loss: 0.3726 , lr: 0.00034203113817116957
+Class Loss: 0.3639, Class Val Loss: 0.3726
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0083, KD Val Loss: 0.0082
+Time taken for epoch 19 is 215.6379590034485 sec
+Epoch [21/50] Loss: 0.3628, Val Loss: 0.3729 , lr: 0.00032725424859373687
+Class Loss: 0.3628, Class Val Loss: 0.3729
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0082, KD Val Loss: 0.0082
+Time taken for epoch 20 is 202.99377846717834 sec
+Epoch [22/50] Loss: 0.3618, Val Loss: 0.3727 , lr: 0.0003121724717912138
+Class Loss: 0.3618, Class Val Loss: 0.3727
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0082, KD Val Loss: 0.0085
+Time taken for epoch 21 is 210.4539988040924 sec
+Epoch [23/50] Loss: 0.3602, Val Loss: 0.3727 , lr: 0.0002968453286464312
+Class Loss: 0.3602, Class Val Loss: 0.3727
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0082, KD Val Loss: 0.0083
+Time taken for epoch 22 is 189.03409886360168 sec
+Epoch [24/50] Loss: 0.3593, Val Loss: 0.3730 , lr: 0.00028133330839107606
+Class Loss: 0.3593, Class Val Loss: 0.3730
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0083, KD Val Loss: 0.0089
+Time taken for epoch 23 is 190.7847809791565 sec
+Epoch [25/50] Loss: 0.3580, Val Loss: 0.3733 , lr: 0.0002656976298823284
+Class Loss: 0.3580, Class Val Loss: 0.3733
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0084, KD Val Loss: 0.0097
+Time taken for epoch 24 is 192.18286275863647 sec
+Epoch [26/50] Loss: 0.3560, Val Loss: 0.3729 , lr: 0.00025
+Class Loss: 0.3560, Class Val Loss: 0.3729
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0087, KD Val Loss: 0.0089
+Time taken for epoch 25 is 192.06137037277222 sec
+Epoch [27/50] Loss: 0.3540, Val Loss: 0.3735 , lr: 0.00023430237011767165
+Class Loss: 0.3540, Class Val Loss: 0.3735
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0090, KD Val Loss: 0.0096
+Time taken for epoch 26 is 188.47944259643555 sec
+Epoch [28/50] Loss: 0.3519, Val Loss: 0.3743 , lr: 0.00021866669160892392
+Class Loss: 0.3519, Class Val Loss: 0.3743
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0095, KD Val Loss: 0.0103
+Time taken for epoch 27 is 197.35401558876038 sec
+Epoch [29/50] Loss: 0.3506, Val Loss: 0.3740 , lr: 0.0002031546713535688
+Class Loss: 0.3506, Class Val Loss: 0.3740
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0100, KD Val Loss: 0.0104
+Time taken for epoch 28 is 185.26036953926086 sec
+Epoch [30/50] Loss: 0.3467, Val Loss: 0.3753 , lr: 0.00018782752820878634
+Class Loss: 0.3467, Class Val Loss: 0.3753
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0106, KD Val Loss: 0.0119
+Time taken for epoch 29 is 206.81235456466675 sec
+Epoch [31/50] Loss: 0.3425, Val Loss: 0.3759 , lr: 0.00017274575140626317
+Class Loss: 0.3425, Class Val Loss: 0.3759
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0117, KD Val Loss: 0.0124
+Time taken for epoch 30 is 189.49275279045105 sec
+Epoch [32/50] Loss: 0.3375, Val Loss: 0.3770 , lr: 0.00015796886182883053
+Class Loss: 0.3375, Class Val Loss: 0.3770
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0130, KD Val Loss: 0.0140
+Time taken for epoch 31 is 187.37143659591675 sec
+Epoch [33/50] Loss: 0.3321, Val Loss: 0.3785 , lr: 0.00014355517710873183
+Class Loss: 0.3321, Class Val Loss: 0.3785
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0146, KD Val Loss: 0.0156
+Time taken for epoch 32 is 188.35053849220276 sec
+Epoch [34/50] Loss: 0.3260, Val Loss: 0.3795 , lr: 0.00012956158147457115
+Class Loss: 0.3260, Class Val Loss: 0.3795
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0165, KD Val Loss: 0.0176
+Time taken for epoch 33 is 191.89455127716064 sec

@@ -13,16 +13,18 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --time=06:00:00
 set -euo pipefail
-: "${DATASET:?}"; : "${SPLIT:?}"
+: "${DATASET:=qg}"; : "${SPLIT:=train,val}"
 
-NPZ_DIR=${NPZ_DIR:-/pscratch/sd/t/twamorka/omnilearned/teacher_logits/TEST}
-OUT_DIR=${OUT_DIR:-/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion}
+NPZ_DIR=${NPZ_DIR:-/pscratch/sd/m/mbenyas}
+OUT_DIR=${OUT_DIR:-/pscratch/sd/m/mbenyas}
 DATA_PATH=${DATA_PATH:-/global/cfs/cdirs/m4567/www/}
-TAG=${TAG:-pretrain_l}
+TAG=${TAG:-fine_tune_qg_pretrain_l}
 
-export PATH=/global/homes/t/twamorka/omnilearned-clean/env/bin:$PATH
+# export PATH=/global/homes/t/twamorka/omnilearned-clean/env/bin:$PATH
+module load conda
+conda activate ol_distill
 
-REPO=/global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned
+REPO=/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation
 echo "=== $(date '+%F %T')  build_teacher_h5 $DATASET/$SPLIT (tag=$TAG) ==="
 python3 "$REPO/build_teacher_h5.py" \
     --npz-dir "$NPZ_DIR" \

@@ -1,0 +1,46 @@
+Epoch [7/15] Loss: 0.3716, Val Loss: 0.3756 , lr: 0.00032725424859373687
+Class Loss: 0.3716, Class Val Loss: 0.3756
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0136, KD Val Loss: 0.0137
+Time taken for epoch 6 is 194.3259539604187 sec
+Epoch [8/15] Loss: 0.3699, Val Loss: 0.3737 , lr: 0.0002761321158169134
+Class Loss: 0.3699, Class Val Loss: 0.3737
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0115, KD Val Loss: 0.0115
+Time taken for epoch 7 is 201.36725544929504 sec
+Epoch [9/15] Loss: 0.3683, Val Loss: 0.3734 , lr: 0.00022386788418308668
+Class Loss: 0.3683, Class Val Loss: 0.3734
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0098, KD Val Loss: 0.0098
+Time taken for epoch 8 is 199.8446807861328 sec
+Epoch [10/15] Loss: 0.3670, Val Loss: 0.3719 , lr: 0.00017274575140626317
+Class Loss: 0.3670, Class Val Loss: 0.3719
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0085, KD Val Loss: 0.0079
+Time taken for epoch 9 is 197.61932802200317 sec
+Epoch [11/15] Loss: 0.3650, Val Loss: 0.3720 , lr: 0.00012500000000000006
+Class Loss: 0.3650, Class Val Loss: 0.3720
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0075, KD Val Loss: 0.0075
+Time taken for epoch 10 is 202.24869084358215 sec
+Epoch [12/15] Loss: 0.3626, Val Loss: 0.3714 , lr: 8.271734841028553e-05
+Class Loss: 0.3626, Class Val Loss: 0.3714
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0068, KD Val Loss: 0.0069
+Time taken for epoch 11 is 203.7925157546997 sec
+Epoch [13/15] Loss: 0.3607, Val Loss: 0.3714 , lr: 4.7745751406263163e-05
+Class Loss: 0.3607, Class Val Loss: 0.3714
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0065, KD Val Loss: 0.0068
+Time taken for epoch 12 is 203.5968565940857 sec
+Epoch [14/15] Loss: 0.3580, Val Loss: 0.3713 , lr: 2.1613635589349755e-05
+Class Loss: 0.3580, Class Val Loss: 0.3713
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0064, KD Val Loss: 0.0069
+Time taken for epoch 13 is 203.44636702537537 sec
+Epoch [15/15] Loss: 0.3554, Val Loss: 0.3716 , lr: 5.463099816548578e-06
+Class Loss: 0.3554, Class Val Loss: 0.3716
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+KD Loss: 0.0064, KD Val Loss: 0.0070
+Time taken for epoch 14 is 217.99010372161865 sec
+Training Complete, best loss: 0.37133 at epoch 6!

@@ -19,11 +19,11 @@ module load pytorch
 # Force the single-process path (in case these leaked into the env).
 unset MASTER_ADDR RANK WORLD_SIZE WORLD_RANK LOCAL_RANK
 
-TEACHER_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion
+TEACHER_DIR=/pscratch/sd/m/mbenyas/
 DATA=/global/cfs/cdirs/m4567/www/
 
 cmd="omnilearned train \
-  -o /pscratch/sd/t/twamorka/omnilearned/checkpoints/smoke \
+  -o /pscratch/sd/m/mbenyas/checkpoints/smoke \
   --save-tag distill_smoke \
   --dataset atlas --mode pretrain --num-classes 210 \
   --path $DATA \
