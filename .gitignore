@@ -1,3 +1,11 @@
 dist/
 src/omnilearned/_version.py
 __pycache__
+
+wandb/
+*.npz
+*.log
+*.h5
+*.npy
+checks/ab_fp32/
+top/
