@@ -26,6 +26,8 @@ conda activate /projects/m000255/miniconda/envs/ol_distill/
 # for DDP
 export MASTER_ADDR=$(hostname)
 
+# command to pretrain large model on jetclass
+
 cmd="omnilearned train \
     -o /projects/m000255/mbenyas/output/ \
     --save-tag pretrain_l \

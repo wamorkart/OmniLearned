@@ -2,17 +2,11 @@
 # Fine-tune the large pretrained model (pretrain_l, 460M params) on the
 # quark/gluon (qg) dataset, 2-class classifier.
 #
-# Run inside an salloc GPU interactive job. For Perlmutter,
-#   salloc -C gpu -q interactive -t 240 --nodes 1 --ntasks-per-node 4 \
-#          --gpus-per-node 4 -A m3246 bash fine_tune_qg_pretrain_l.sh
-# and then run ./fine_tune_qg_pretrain_l.sh
-# And for Marlowe,
+# Run inside a GPU interactive job:
 # srun -N 1 -G 1 -A marlowe-m000255 -p preempt --time=00:30:00 --pty bash
-# and then run bash fine_tune_qg_pretrain_l.sh
+# and then run bash fine_tune_qg_pretrain_l_marlowe.sh
 
-module load conda
-conda activate ol_distill
-module load pytorch
+conda activate /projects/m000255/miniconda/envs/ol_distill/
 
 export MASTER_ADDR=$(hostname)
 export NCCL_TIMEOUT=600000
@@ -20,13 +14,18 @@ export NCCL_DEBUG=WARN
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+SAVE_TAG=fine_tune_pretrain_l #distill_qg_small_scratch_a05_T4
+DATASET=qg
+DIR="/projects/m000255/mbenyas/output/${SAVE_TAG}_${DATASET}"
+DESCRIPT_TAG=int
+
 cmd="omnilearned train \
-  -o /pscratch/sd/m/mbenyas/ \
-  --save-tag fine_tune_qg_pretrain_l \
+  -o ${DIR} \
+  --save-tag ${SAVE_TAG}_${DATASET}_${DESCRIPT_TAG} \
   --pretrain-tag pretrain_l \
   --fine-tune \
   --dataset qg --mode classifier --num-classes 2 \
-  --path /global/cfs/cdirs/m4567/www/ \
+  --path /projects/m000255/twamorka/qg_datasets \
   --size large \
   --use-pid \
   --interaction \
