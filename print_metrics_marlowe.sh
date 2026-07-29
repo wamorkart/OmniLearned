@@ -9,7 +9,8 @@
 # Edit these for whichever run you want to evaluate
 SAVE_TAG=distill_top_small_scratch_a05_T4   # full save-tag as passed to `evaluate --save-tag`
 DATASET=top
-DIR="/projects/m000255/mbenyas/output/${SAVE_TAG}"
+QUANTIZATION=int8
+DIR="/projects/m000255/mbenyas/output/${SAVE_TAG}_${QUANTIZATION}"
 DATASET_TYPE=test
 
 # Where to save results -- one file per run, named after the config above,

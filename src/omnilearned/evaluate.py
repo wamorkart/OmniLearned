@@ -316,6 +316,14 @@ def run(
         model.cpu()
         device = "cpu"
 
+    # --- INT8 weight-only quantization (optional) ---
+    quantize_choice = os.environ.get("QUANTIZE", "none").lower()
+    if quantize_choice == "int8":
+        from torchao.quantization import quantize_, Int8WeightOnlyConfig
+        if is_master_node():
+            print("[eval] applying INT8 weight-only quantization")
+        quantize_(model, Int8WeightOnlyConfig())
+
     model = DDP(
         model,
         **kwarg,

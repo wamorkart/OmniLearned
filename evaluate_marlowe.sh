@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -G 1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=00:30:00
+#SBATCH --time=00:10:00
 #SBATCH -o evaluate_distill_top_small_%j.out
 
 # Evaluation script.
@@ -18,7 +18,8 @@
 # top-tagging dataset.
 SAVE_TAG=distill_top_small_scratch_a05_T4
 CHECKPOINT_DIR=/projects/m000255/twamorka/checkpoints
-OUTPUT_DIR=/projects/m000255/mbenyas/output/${SAVE_TAG}   # where my eval outputs land
+QUANTIZATION=int8 
+OUTPUT_DIR=/projects/m000255/mbenyas/output/${SAVE_TAG}_${QUANTIZATION}   # where my eval outputs land
 DATASET_TYPE=${DATASET_TYPE:-test}
 
 # make sure these match how the checkpoint was trained
@@ -31,6 +32,7 @@ INTERACTION_FLAG=--interaction               # set to "" or --interaction
 LOCAL_INTERACTION_FLAG=--local-interaction   # set to "" or --local-interaction
 
 mkdir -p "$OUTPUT_DIR"
+export QUANTIZE=${QUANTIZATION}              # if want quantization (uncomment otherwise)
 
 omnilearned evaluate \
     -i ${CHECKPOINT_DIR} \

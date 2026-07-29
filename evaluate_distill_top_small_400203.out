@@ -1,0 +1,93 @@
+/projects/m000255/mbenyas/OmniLearned/src/omnilearned/utils.py:379: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.5.1+cu124).
+**** Setup ****
+Total params: 2.71M
+Evaluating on device: cuda:0, with 1 GPUs
+************
+**** Setup ****
+Train dataset len: 3157
+************
+Loading checkpoint from /projects/m000255/twamorka/checkpoints/best_model_distill_top_small_scratch_a05_T4.pt
+[rank0]: ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+[rank0]: │ /projects/m000255/mbenyas/OmniLearned/src/omnilearned/cli.py:296 in evaluate │
+[rank0]: │                                                                              │
+[rank0]: │   293 │   │   help="Which chunk (0..num_chunks-1) this invocation            │
+[rank0]: │       processes.",                                                           │
+[rank0]: │   294 │   ),                                                                 │
+[rank0]: │   295 ):                                                                     │
+[rank0]: │ ❱ 296 │   run_evaluation(                                                    │
+[rank0]: │   297 │   │   indir,                                                         │
+[rank0]: │   298 │   │   outdir,                                                        │
+[rank0]: │   299 │   │   save_tag,                                                      │
+[rank0]: │                                                                              │
+[rank0]: │ /projects/m000255/mbenyas/OmniLearned/src/omnilearned/evaluate.py:322 in run │
+[rank0]: │                                                                              │
+[rank0]: │   319 │   # --- INT8 weight-only quantization (optional) ---                 │
+[rank0]: │   320 │   quantize_choice = os.environ.get("QUANTIZE", "none").lower()       │
+[rank0]: │   321 │   if quantize_choice == "int8":                                      │
+[rank0]: │ ❱ 322 │   │   from torchao.quantization import quantize_,                    │
+[rank0]: │       Int8WeightOnlyConfig                                                   │
+[rank0]: │   323 │   │   if is_master_node():                                           │
+[rank0]: │   324 │   │   │   print("[eval] applying INT8 weight-only quantization")     │
+[rank0]: │   325 │   │   quantize_(model, Int8WeightOnlyConfig())                       │
+[rank0]: │                                                                              │
+[rank0]: │ /projects/m000255/miniconda/envs/ol_distill/lib/python3.11/site-packages/tor │
+[rank0]: │ chao/__init__.py:107 in <module>                                             │
+[rank0]: │                                                                              │
+[rank0]: │   104 # must import dtypes before quantization                               │
+[rank0]: │   105 from . import dtypes  # noqa: I001                                     │
+[rank0]: │   106                                                                        │
+[rank0]: │ ❱ 107 from torchao.quantization import (                                     │
+[rank0]: │   108 │   quantize_,                                                         │
+[rank0]: │   109 )                                                                      │
+[rank0]: │   110                                                                        │
+[rank0]: │                                                                              │
+[rank0]: │ /projects/m000255/miniconda/envs/ol_distill/lib/python3.11/site-packages/tor │
+[rank0]: │ chao/quantization/__init__.py:22 in <module>                                 │
+[rank0]: │                                                                              │
+[rank0]: │    19 from .linear_activation_scale import (                                 │
+[rank0]: │    20 │   to_weight_tensor_with_linear_activation_scale_metadata,            │
+[rank0]: │    21 )                                                                      │
+[rank0]: │ ❱  22 from .linear_quant_modules import (                                    │
+[rank0]: │    23 │   Int4WeightOnlyQuantizer,                                           │
+[rank0]: │    24 │   Int8DynActInt4WeightLinear,                                        │
+[rank0]: │    25 │   Int8DynActInt4WeightQuantizer,                                     │
+[rank0]: │                                                                              │
+[rank0]: │ /projects/m000255/miniconda/envs/ol_distill/lib/python3.11/site-packages/tor │
+[rank0]: │ chao/quantization/linear_quant_modules.py:21 in <module>                     │
+[rank0]: │                                                                              │
+[rank0]: │    18 from torchao.dtypes.utils import is_device                             │
+[rank0]: │    19 from torchao.utils import find_multiple                                │
+[rank0]: │    20                                                                        │
+[rank0]: │ ❱  21 from .quant_primitives import (                                        │
+[rank0]: │    22 │   MappingType,                                                       │
+[rank0]: │    23 │   dequantize_affine,                                                 │
+[rank0]: │    24 )                                                                      │
+[rank0]: │                                                                              │
+[rank0]: │ /projects/m000255/miniconda/envs/ol_distill/lib/python3.11/site-packages/tor │
+[rank0]: │ chao/quantization/quant_primitives.py:191 in <module>                        │
+[rank0]: │                                                                              │
+[rank0]: │    188                                                                       │
+[rank0]: │    189 _SUB_BYTE_INT_BOUNDS.update(                                          │
+[rank0]: │    190 │   {                                                                 │
+[rank0]: │ ❱  191 │   │   torch.int1: (-(2**0), 2**0 - 1),                              │
+[rank0]: │    192 │   │   torch.int2: (-(2**1), 2**1 - 1),                              │
+[rank0]: │    193 │   │   torch.int3: (-(2**2), 2**2 - 1),                              │
+[rank0]: │    194 │   │   torch.int4: (-(2**3), 2**3 - 1),                              │
+[rank0]: │                                                                              │
+[rank0]: │ /projects/m000255/miniconda/envs/ol_distill/lib/python3.11/site-packages/tor │
+[rank0]: │ ch/__init__.py:2562 in __getattr__                                           │
+[rank0]: │                                                                              │
+[rank0]: │   2559 │   │   if name in _lazy_modules:                                     │
+[rank0]: │   2560 │   │   │   return importlib.import_module(f".{name}", __name__)      │
+[rank0]: │   2561 │   │                                                                 │
+[rank0]: │ ❱ 2562 │   │   raise AttributeError(f"module '{__name__}' has no attribute   │
+[rank0]: │        '{name}'")                                                            │
+[rank0]: │   2563                                                                       │
+[rank0]: │   2564                                                                       │
+[rank0]: │   2565 def get_device_module(device: _Optional[_Union[torch.device, str]] =  │
+[rank0]: │        None):                                                                │
+[rank0]: ╰──────────────────────────────────────────────────────────────────────────────╯
+[rank0]: AttributeError: module 'torch' has no attribute 'int1'
+[rank0]:[W729 15:55:11.695199954 ProcessGroupNCCL.cpp:1250] Warning: WARNING: process group has NOT been destroyed before we destruct ProcessGroupNCCL. On normal program exit, the application should call destroy_process_group to ensure that any pending NCCL operations have finished in this process. In rare cases this process can exit before this point and block the progress of another member of the process group. This constraint has always been present,  but this warning has only been added since PyTorch 2.4 (function operator())
