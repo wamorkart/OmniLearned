@@ -31,6 +31,7 @@ dependencies = [
     "diffusers>=0.32.2",
     "typer>=0.15.2",
     "tqdm>=4.67.1",
+    "torchao>=0.7.0,<0.8",
 
 ]
 

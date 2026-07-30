@@ -5,12 +5,18 @@
 #SBATCH -G 1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:10:00
-#SBATCH -o evaluate_distill_top_small_%j.out
+#SBATCH -o logs/evaluate_distill_top_small_%j.out
+
+# conda activate /projects/m000255/miniconda/envs/ol_distill/ 
+# before running this!!
+
+source /cm/shared/apps/Mambaforge/24.3.0-0/etc/profile.d/conda.sh
+conda activate /projects/m000255/miniconda/envs/ol_distill/
 
 # Evaluation script.
 # Once sbatch evaluate_marlowe.sh is submitted,
 # track it with squeue -u $USER and
-# tail -f evaluate_distill_top_small_400173.out
+# tail -f logs/evaluate_distill_top_small_400___.out
 
 # export MASTER_ADDR=$(hostname)
 
