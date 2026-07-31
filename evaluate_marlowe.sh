@@ -4,7 +4,8 @@
 #SBATCH -N 1
 #SBATCH -G 1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=00:10:00
+#SBATCH --time=00:7:00
+#SBATCH --requeue
 #SBATCH -o logs/evaluate_distill_top_small_%j.out
 
 # conda activate /projects/m000255/miniconda/envs/ol_distill/ 
@@ -22,9 +23,23 @@ conda activate /projects/m000255/miniconda/envs/ol_distill/
 
 # Evaluate a distilled small student model (trained from scratch, KD) on the
 # top-tagging dataset.
-SAVE_TAG=distill_top_small_scratch_a05_T4
+
+# ============================================================
+#  EDIT THESE TWO LINES PER RUN -- everything else derives from them
+# ============================================================
+SAVE_TAG=distill_top_small_scratch_a05_T4   # checkpoint name, under $CHECKPOINT_DIR
+QUANTIZATION=int8                             # "none" or "int8" ("fp16"/"int4" temporarily disabled)
+# ============================================================
+
+case "$QUANTIZATION" in
+    none|int8) ;;
+    *)
+        echo "ERROR: QUANTIZATION must be 'none' or 'int8' ('fp16'/'int4' temporarily disabled), got '$QUANTIZATION'" >&2
+        exit 1
+        ;;
+esac
+
 CHECKPOINT_DIR=/projects/m000255/twamorka/checkpoints
-QUANTIZATION=int8 
 OUTPUT_DIR=/projects/m000255/mbenyas/output/${SAVE_TAG}_${QUANTIZATION}   # where my eval outputs land
 DATASET_TYPE=${DATASET_TYPE:-test}
 
@@ -38,7 +53,7 @@ INTERACTION_FLAG=--interaction               # set to "" or --interaction
 LOCAL_INTERACTION_FLAG=--local-interaction   # set to "" or --local-interaction
 
 mkdir -p "$OUTPUT_DIR"
-export QUANTIZE=${QUANTIZATION}              # if want quantization (uncomment otherwise)
+export QUANTIZE=${QUANTIZATION}
 
 omnilearned evaluate \
     -i ${CHECKPOINT_DIR} \

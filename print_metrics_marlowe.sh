@@ -6,10 +6,22 @@
 # Activate environment before: conda activate /projects/m000255/miniconda/envs/ol_distill/
 # Then run bash print_metrics_marlowe.sh
 
-# Edit these for whichever run you want to evaluate
+# ============================================================
+#  EDIT THESE TWO LINES PER RUN -- everything else derives from them
+# ============================================================
 SAVE_TAG=distill_top_small_scratch_a05_T4   # full save-tag as passed to `evaluate --save-tag`
+QUANTIZATION=int8                          # "none" or "int8" ("fp16"/"int4" temporarily disabled) -- must match the evaluate_marlowe.sh run
+# ============================================================
+
+case "$QUANTIZATION" in
+    none|int8) ;;
+    *)
+        echo "ERROR: QUANTIZATION must be 'none' or 'int8' ('fp16'/'int4' temporarily disabled), got '$QUANTIZATION'" >&2
+        exit 1
+        ;;
+esac
+
 DATASET=top
-QUANTIZATION=int8
 DIR="/projects/m000255/mbenyas/output/${SAVE_TAG}_${QUANTIZATION}"
 DATASET_TYPE=test
 

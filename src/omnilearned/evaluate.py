@@ -17,6 +17,7 @@ import time
 import numpy as np
 import h5py
 from tqdm.auto import tqdm
+from torch.utils.flop_counter import FlopCounterMode
 
 
 def eval_model(
@@ -121,6 +122,12 @@ def test_step(
         print(f"[eval] forward precision: {'autocast ' + amp_choice if use_amp else 'fp32'}")
     fwd_time = 0.0
 
+    # Match input dtype to the model's own weight dtype: stays fp32 for
+    # unquantized/int8/int4 models (torchao's quantized tensor subclasses
+    # report fp32 as their outer dtype), and becomes fp16 when QUANTIZE=fp16
+    # has cast the model's weights with .half().
+    model_dtype = next(model.parameters()).dtype
+
     preds = []
     labels = []
     conds = []
@@ -131,7 +138,7 @@ def test_step(
         if is_master_node()
         else dataloader
     ):
-        X, y = batch["X"].to(device, dtype=torch.float), batch["y"].to(device)
+        X, y = batch["X"].to(device, dtype=model_dtype), batch["y"].to(device)
         npart = X.shape[1]
         model_kwargs = {
             key: (batch[key].to(device) if batch[key] is not None else None)
@@ -316,18 +323,78 @@ def run(
         model.cpu()
         device = "cpu"
 
+    if is_master_node():
+        # FLOPs are a property of the architecture (number of multiply-adds),
+        # not of the numeric precision used to run them, so this is measured
+        # once here on the plain model -- before quantization/DDP -- rather
+        # than repeated per QUANTIZE mode.
+        sample_batch = next(iter(test_loader))
+        sample_X = sample_batch["X"].to(device, dtype=torch.float)
+        sample_y = sample_batch["y"].to(device)
+        sample_kwargs = {
+            key: (sample_batch[key].to(device) if sample_batch[key] is not None else None)
+            for key in ["cond", "pid", "add_info"]
+            if key in sample_batch
+        }
+        with torch.no_grad(), FlopCounterMode(display=False) as flop_counter:
+            model(sample_X, sample_y, **sample_kwargs)
+        print("**** Setup ****")
+        print(
+            "FLOPs per forward pass (batch=%d): %.3f GFLOPs"
+            % (sample_X.shape[0], flop_counter.get_total_flops() / 1e9)
+        )
+        print("************")
+
     model = DDP(
         model,
         **kwarg,
     )
 
-    # --- INT8 weight-only quantization (optional) ---
+    # --- Weight precision reduction (optional) ---
+    # fp16 and int4 are disabled for now, pending a decision on the
+    # architecture change they'd require (InteractionBlock and the attention
+    # masks hardcode float32 in layers.py/network.py, which breaks a hard
+    # .half() cast and torchao's packed int4 kernel). Uncomment below to
+    # re-enable once that's resolved.
+    quantize_choices = ("none", "int8")  # "fp16", "int4" temporarily disabled
     quantize_choice = os.environ.get("QUANTIZE", "none").lower()
+    if quantize_choice not in quantize_choices:
+        raise ValueError(f"QUANTIZE must be one of {quantize_choices}, got '{quantize_choice}'")
+
+    # if quantize_choice == "fp16":
+    #     # Weights are NOT cast/stored as fp16 here -- InteractionBlock and the
+    #     # attention masks hardcode float32 (layers.py/network.py), so a hard
+    #     # .half() on the whole model crashes with a dtype mismatch. Instead
+    #     # this reuses EVAL_AMP's autocast path: PyTorch runs the big matmuls
+    #     # in fp16 and automatically keeps numerically fragile ops (log, exp,
+    #     # softmax) in fp32. That's a compute-precision speedup, not a weight
+    #     # compression -- the model stays fp32-sized in memory, unlike
+    #     # int8/int4 below.
+    #     os.environ.setdefault("EVAL_AMP", "fp16")
+    #     if is_master_node():
+    #         print("[eval] QUANTIZE=fp16 requests fp16 autocast for the forward pass")
     if quantize_choice == "int8":
         from torchao.quantization import quantize_, int8_weight_only
         if is_master_node():
             print("[eval] applying INT8 weight-only quantization")
         quantize_(model.module, int8_weight_only())
+    # elif quantize_choice == "int4":
+    #     if device == "cpu":
+    #         raise RuntimeError("INT4 weight-only quantization requires a CUDA device")
+    #     from torchao.quantization import quantize_, int4_weight_only
+    #
+    #     def _int4_filter(module, fqn):
+    #         # torchao's int4 tensor-core kernel requires in_features to be a
+    #         # multiple of group_size. The handful of raw-feature input
+    #         # projections (in_features 3/4/7) don't meet that and are a
+    #         # negligible share of total parameters, so leave them unquantized
+    #         # instead of erroring out.
+    #         group_size = 128
+    #         return isinstance(module, torch.nn.Linear) and module.in_features % group_size == 0
+    #
+    #     if is_master_node():
+    #         print("[eval] applying INT4 weight-only quantization")
+    #     quantize_(model.module, int4_weight_only(group_size=128), filter_fn=_int4_filter)
 
     eval_model(
         model,
