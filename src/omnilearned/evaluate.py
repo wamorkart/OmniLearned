@@ -345,56 +345,48 @@ def run(
         )
         print("************")
 
-    model = DDP(
-        model,
-        **kwarg,
-    )
 
-    # --- Weight precision reduction (optional) ---
-    # fp16 and int4 are disabled for now, pending a decision on the
-    # architecture change they'd require (InteractionBlock and the attention
-    # masks hardcode float32 in layers.py/network.py, which breaks a hard
-    # .half() cast and torchao's packed int4 kernel). Uncomment below to
-    # re-enable once that's resolved.
-    quantize_choices = ("none", "int8")  # "fp16", "int4" temporarily disabled
+    # print(model.module.body.embed.mlp.fc1.weight.dtype)
+    # print(model.module.body.embed.mlp.fc1.weight[0, :5])
+
+    from torchao.quantization import quantize_, int8_weight_only, int8_dynamic_activation_int8_weight
+
+
+    # --- Precision reduction (optional) ---
+    quantize_choices = ("none", "int8", "int8dq", "bf16")  # "fp16", "int4" temporarily disabled
     quantize_choice = os.environ.get("QUANTIZE", "none").lower()
     if quantize_choice not in quantize_choices:
         raise ValueError(f"QUANTIZE must be one of {quantize_choices}, got '{quantize_choice}'")
-
-    # if quantize_choice == "fp16":
-    #     # Weights are NOT cast/stored as fp16 here -- InteractionBlock and the
-    #     # attention masks hardcode float32 (layers.py/network.py), so a hard
-    #     # .half() on the whole model crashes with a dtype mismatch. Instead
-    #     # this reuses EVAL_AMP's autocast path: PyTorch runs the big matmuls
-    #     # in fp16 and automatically keeps numerically fragile ops (log, exp,
-    #     # softmax) in fp32. That's a compute-precision speedup, not a weight
-    #     # compression -- the model stays fp32-sized in memory, unlike
-    #     # int8/int4 below.
-    #     os.environ.setdefault("EVAL_AMP", "fp16")
-    #     if is_master_node():
-    #         print("[eval] QUANTIZE=fp16 requests fp16 autocast for the forward pass")
     if quantize_choice == "int8":
-        from torchao.quantization import quantize_, int8_weight_only
         if is_master_node():
             print("[eval] applying INT8 weight-only quantization")
-        quantize_(model.module, int8_weight_only())
-    # elif quantize_choice == "int4":
-    #     if device == "cpu":
-    #         raise RuntimeError("INT4 weight-only quantization requires a CUDA device")
-    #     from torchao.quantization import quantize_, int4_weight_only
-    #
-    #     def _int4_filter(module, fqn):
-    #         # torchao's int4 tensor-core kernel requires in_features to be a
-    #         # multiple of group_size. The handful of raw-feature input
-    #         # projections (in_features 3/4/7) don't meet that and are a
-    #         # negligible share of total parameters, so leave them unquantized
-    #         # instead of erroring out.
-    #         group_size = 128
-    #         return isinstance(module, torch.nn.Linear) and module.in_features % group_size == 0
-    #
-    #     if is_master_node():
-    #         print("[eval] applying INT4 weight-only quantization")
-    #     quantize_(model.module, int4_weight_only(group_size=128), filter_fn=_int4_filter)
+        quantize_(model, int8_weight_only())
+        # model = torch.compile(model, dynamic=True)
+    elif quantize_choice == "int8dq":
+        def _int8dq_filter(module, fqn):
+            return isinstance(module, torch.nn.Linear) and "interaction" not in fqn
+        if is_master_node():
+            print("[eval] applying INT8 dynamic activation + INT8 weight quantization")
+        quantize_(model, int8_dynamic_activation_int8_weight(), filter_fn=_int8dq_filter)
+    elif quantize_choice == "bf16":
+        if is_master_node():
+            print("[eval] casting model weights to bfloat16")
+        model.module.bfloat16()
+
+    # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data.dtype)
+    # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data[0, :5])
+
+    # need to modify this if using multiple GPUs
+    if size > 1:
+        model = DDP(model, **kwarg)
+
+    # model = DDP(
+    #     model,
+    #     **kwarg,
+    # )
+
+    
+
 
     eval_model(
         model,

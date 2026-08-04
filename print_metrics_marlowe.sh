@@ -9,19 +9,19 @@
 # ============================================================
 #  EDIT THESE TWO LINES PER RUN -- everything else derives from them
 # ============================================================
-SAVE_TAG=distill_top_small_scratch_a05_T4   # full save-tag as passed to `evaluate --save-tag`
-QUANTIZATION=int8                          # "none" or "int8" ("fp16"/"int4" temporarily disabled) -- must match the evaluate_marlowe.sh run
+SAVE_TAG=fine_tune_pretrain_l_qg_int_i300_e10 # distill_top_small_scratch_a05_T4   # full save-tag as passed to `evaluate --save-tag`
+QUANTIZATION=int8                          # "none", "int8", "int8dq", or "bf16" ("fp16"/"int4" temporarily disabled) -- must match the evaluate_marlowe.sh run
 # ============================================================
 
 case "$QUANTIZATION" in
-    none|int8) ;;
+    none|int8|int8dq|bf16) ;;
     *)
-        echo "ERROR: QUANTIZATION must be 'none' or 'int8' ('fp16'/'int4' temporarily disabled), got '$QUANTIZATION'" >&2
+        echo "ERROR: QUANTIZATION must be 'none', 'int8', 'int8dq', or 'bf16' ('fp16'/'int4' temporarily disabled), got '$QUANTIZATION'" >&2
         exit 1
         ;;
 esac
 
-DATASET=top
+DATASET=qg # top
 DIR="/projects/m000255/mbenyas/output/${SAVE_TAG}_${QUANTIZATION}"
 DATASET_TYPE=test
 
