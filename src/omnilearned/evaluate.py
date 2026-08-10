@@ -347,7 +347,7 @@ def run(
 
     from torchao.quantization import quantize_, int8_weight_only, int8_dynamic_activation_int8_weight
 
-    # --- Precision reduction (optional) ---
+    # --- Quantization (optional) ---
     quantize_choices = ("none", "int8", "int8dq", "bf16")  # "fp16", "int4" temporarily disabled
     quantize_choice = os.environ.get("QUANTIZE", "none").lower()
     if quantize_choice not in quantize_choices:
@@ -370,20 +370,10 @@ def run(
     # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data.dtype)
     # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data[0, :5])
 
-
-    model = DDP(
-        model,
-        **kwarg,
-    )
-
-
-    # need to modify this if using multiple GPUs
-    # if size > 1:
-    #     model = DDP(model, **kwarg)
-
-
-    
-
+    # model = DDP(
+    #     model,
+    #     **kwarg,
+    # )
 
     eval_model(
         model,

@@ -14,7 +14,7 @@ export MASTER_ADDR=$(hostname)
 #  EDIT THESE TWO LINES PER RUN -- everything else derives from them
 # ============================================================
 SAVE_TAG=distill_top_small_scratch_a05_T4   # checkpoint name, under $CHECKPOINT_DIR
-QUANTIZATION=int8                           # "none", "int8", "int8dq", or "bf16"
+QUANTIZATION=none                           # "none", "int8", "int8dq", or "bf16"
 # ============================================================
 
 case "$QUANTIZATION" in
