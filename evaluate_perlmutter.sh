@@ -2,8 +2,7 @@
 # Evaluate a checkpoint (e.g. the distilled small student trained on top) on a split.
 #
 # Run inside an salloc GPU interactive job, e.g.:
-#   salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 \
-#          --gpus-per-node 4 -A m3246
+#   salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 --gpus-per-node 4 -A m3246
 # then run bash evaluate_perlmutter.sh
 
 module load conda
@@ -15,7 +14,7 @@ export MASTER_ADDR=$(hostname)
 #  EDIT THESE TWO LINES PER RUN -- everything else derives from them
 # ============================================================
 SAVE_TAG=distill_top_small_scratch_a05_T4   # checkpoint name, under $CHECKPOINT_DIR
-QUANTIZATION=none                           # "none", "int8", "int8dq", or "bf16"
+QUANTIZATION=int8                           # "none", "int8", "int8dq", or "bf16"
 # ============================================================
 
 case "$QUANTIZATION" in
@@ -32,6 +31,7 @@ DATASET_TYPE=${DATASET_TYPE:-test}
 
 # make sure these match how the checkpoint was trained
 DATASET=top
+MODE=classifier
 PATH_TO_DATA=/global/cfs/cdirs/m4567/www/
 SIZE=small
 NUM_CLASSES=2                                # top-tagging is binary
@@ -49,6 +49,7 @@ cmd="omnilearned evaluate \
     -o ${OUTPUT_DIR} \
     --save-tag ${SAVE_TAG} \
     --dataset ${DATASET} \
+    --mode ${MODE} \
     --path ${PATH_TO_DATA} \
     --size ${SIZE} \
     ${USE_PID_FLAG} \

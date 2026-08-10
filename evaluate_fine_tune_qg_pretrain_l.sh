@@ -19,7 +19,7 @@ SAVE_TAG_BASE=fine_tune_pretrain_l
 DATASET=qg
 DESCRIPT_TAG=int_i300_e10 # int_localint_i300_e10 #nointterms_i300_e10
 DATASET_TYPE=${DATASET_TYPE:-test}
-QUANTIZATION=none                          # "none", "int8", "int8dq", or "bf16"
+QUANTIZATION=int8                          # "none", "int8", "int8dq", or "bf16"
 # ============================================================
 
 case "$QUANTIZATION" in
