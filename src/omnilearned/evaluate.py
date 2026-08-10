@@ -323,34 +323,29 @@ def run(
         model.cpu()
         device = "cpu"
 
-    if is_master_node():
-        # FLOPs are a property of the architecture (number of multiply-adds),
-        # not of the numeric precision used to run them, so this is measured
-        # once here on the plain model -- before quantization/DDP -- rather
-        # than repeated per QUANTIZE mode.
-        sample_batch = next(iter(test_loader))
-        sample_X = sample_batch["X"].to(device, dtype=torch.float)
-        sample_y = sample_batch["y"].to(device)
-        sample_kwargs = {
-            key: (sample_batch[key].to(device) if sample_batch[key] is not None else None)
-            for key in ["cond", "pid", "add_info"]
-            if key in sample_batch
-        }
-        with torch.no_grad(), FlopCounterMode(display=False) as flop_counter:
-            model(sample_X, sample_y, **sample_kwargs)
-        print("**** Setup ****")
-        print(
-            "FLOPs per forward pass (batch=%d): %.3f GFLOPs"
-            % (sample_X.shape[0], flop_counter.get_total_flops() / 1e9)
-        )
-        print("************")
+    # FLOPs counting
+    sample_batch = next(iter(test_loader))
+    sample_X = sample_batch["X"].to(device, dtype=torch.float)
+    sample_y = sample_batch["y"].to(device)
+    sample_kwargs = {
+        key: (sample_batch[key].to(device) if sample_batch[key] is not None else None)
+        for key in ["cond", "pid", "add_info"]
+        if key in sample_batch
+    }
+    with torch.no_grad(), FlopCounterMode(display=False) as flop_counter:
+        model(sample_X, sample_y, **sample_kwargs)
+    print("**** Setup ****")
+    print(
+        "FLOPs per forward pass (batch=%d): %.3f GFLOPs"
+        % (sample_X.shape[0], flop_counter.get_total_flops() / 1e9)
+    )
+    print("************")
 
 
-    # print(model.module.body.embed.mlp.fc1.weight.dtype)
-    # print(model.module.body.embed.mlp.fc1.weight[0, :5])
+    # print(model.body.embed.mlp.fc1.weight.dtype)
+    # print(model.body.embed.mlp.fc1.weight[0, :5])
 
     from torchao.quantization import quantize_, int8_weight_only, int8_dynamic_activation_int8_weight
-
 
     # --- Precision reduction (optional) ---
     quantize_choices = ("none", "int8", "int8dq", "bf16")  # "fp16", "int4" temporarily disabled
@@ -358,8 +353,7 @@ def run(
     if quantize_choice not in quantize_choices:
         raise ValueError(f"QUANTIZE must be one of {quantize_choices}, got '{quantize_choice}'")
     if quantize_choice == "int8":
-        if is_master_node():
-            print("[eval] applying INT8 weight-only quantization")
+        print("[eval] applying INT8 weight-only quantization")
         quantize_(model, int8_weight_only())
         # model = torch.compile(model, dynamic=True)
     elif quantize_choice == "int8dq":
@@ -371,19 +365,22 @@ def run(
     elif quantize_choice == "bf16":
         if is_master_node():
             print("[eval] casting model weights to bfloat16")
-        model.module.bfloat16()
+        model.bfloat16()
 
     # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data.dtype)
     # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data[0, :5])
 
-    # need to modify this if using multiple GPUs
-    if size > 1:
-        model = DDP(model, **kwarg)
 
-    # model = DDP(
-    #     model,
-    #     **kwarg,
-    # )
+    model = DDP(
+        model,
+        **kwarg,
+    )
+
+
+    # need to modify this if using multiple GPUs
+    # if size > 1:
+    #     model = DDP(model, **kwarg)
+
 
     
 

@@ -1,0 +1,191 @@
+_wandb:
+    value:
+        cli_version: 0.28.1
+        e:
+            0o1uif2j9m1jjt1s88zfslexwsc8rqpc:
+                args:
+                    - train
+                    - -o
+                    - /pscratch/sd/m/mbenyas
+                    - --save-tag
+                    - fine_tune_pretrain_l_qg_int_i300_e10
+                    - --pretrain-tag
+                    - pretrain_l
+                    - --fine-tune
+                    - --dataset
+                    - qg
+                    - --mode
+                    - classifier
+                    - --num-classes
+                    - "2"
+                    - --path
+                    - /global/cfs/cdirs/m4567/www/
+                    - --size
+                    - large
+                    - --use-pid
+                    - --interaction
+                    - --iterations
+                    - "300"
+                    - --batch
+                    - "32"
+                    - --epoch
+                    - "10"
+                    - --wd
+                    - "10.0"
+                    - --lr
+                    - "1e-6"
+                    - --num-workers
+                    - "4"
+                    - --wandb
+                    - --resuming
+                cpu_count: 64
+                cpu_count_logical: 128
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "134865895424"
+                        used: "954343424"
+                email: mbenyas@stanford.edu
+                executable: /global/homes/m/mbenyas/.conda/envs/ol_distill/bin/python3.11
+                git:
+                    commit: a376ab785bdcf1b89f79c879edc72f7d4d91e621
+                    remote: https://github.com/wamorkart/OmniLearned.git
+                gpu: NVIDIA A100-SXM4-40GB
+                gpu_count: 4
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "42949672960"
+                      name: NVIDIA A100-SXM4-40GB
+                      uuid: GPU-951598a2-2afa-6e89-933b-427fdabc59da
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "42949672960"
+                      name: NVIDIA A100-SXM4-40GB
+                      uuid: GPU-57760bf1-56a2-99b3-2599-155ca299770a
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "42949672960"
+                      name: NVIDIA A100-SXM4-40GB
+                      uuid: GPU-3a3f75c6-c47a-9b0c-6f7a-1682c362dca7
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "42949672960"
+                      name: NVIDIA A100-SXM4-40GB
+                      uuid: GPU-c2bb7201-8ce7-1982-4e5d-6c1a54d867f6
+                host: nid001097
+                memory:
+                    total: "269731790848"
+                os: Linux-6.4.0-150600.23.103_15.0.27-cray_shasta_c-x86_64-with-glibc2.38
+                program: /global/homes/m/mbenyas/.conda/envs/ol_distill/bin/omnilearned
+                python: CPython 3.11.15
+                root: /global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation
+                slurm:
+                    cluster_name: perlmutter
+                    cpu_bind: quiet,mask_cpu:0x000000000000FFFF000000000000FFFF,0x00000000FFFF000000000000FFFF0000,0x0000FFFF000000000000FFFF00000000,0xFFFF000000000000FFFF000000000000
+                    cpu_bind_list: 0x000000000000FFFF000000000000FFFF,0x00000000FFFF000000000000FFFF0000,0x0000FFFF000000000000FFFF00000000,0xFFFF000000000000FFFF000000000000
+                    cpu_bind_type: 'mask_cpu:'
+                    cpu_bind_verbose: quiet
+                    cpus_on_node: "128"
+                    distribution: block
+                    gpus_on_node: "4"
+                    gpus_per_node: "4"
+                    gtids: 0,1,2,3
+                    job_account: m3246_g
+                    job_cpus_per_node: "128"
+                    job_end_time: "1786383932"
+                    job_gid: "114650"
+                    job_gpus: 0,1,2,3
+                    job_group: mbenyas
+                    job_id: "56571356"
+                    job_licenses: cfs:1
+                    job_name: interactive
+                    job_nodelist: nid001097
+                    job_num_nodes: "1"
+                    job_partition: urgent_gpu_ss11
+                    job_qos: gpu_interactive
+                    job_start_time: "1786380332"
+                    job_uid: "114650"
+                    job_user: mbenyas
+                    jobid: "56571356"
+                    labelio: "1"
+                    launch_node_ipaddr: 128.55.68.182
+                    localid: "0"
+                    mpi_type: cray_shasta
+                    nnodes: "1"
+                    nodeid: "0"
+                    nodelist: nid001097
+                    nprocs: "4"
+                    ntasks: "4"
+                    ntasks_per_node: "4"
+                    oom_kill_step: "0"
+                    prio_process: "0"
+                    procid: "0"
+                    pty_port: "44469"
+                    pty_win_col: "219"
+                    pty_win_row: "25"
+                    script_context: prolog_task
+                    srun_comm_host: 128.55.68.182
+                    srun_comm_port: "34399"
+                    step_gpus: 0,1,2,3
+                    step_id: "3"
+                    step_launcher_port: "34399"
+                    step_nodelist: nid001097
+                    step_num_nodes: "1"
+                    step_num_tasks: "4"
+                    step_resv_ports: 63017-63021
+                    step_tasks_per_node: "4"
+                    stepid: "3"
+                    stepmgr: nid001097
+                    submit_dir: /global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation
+                    submit_host: login10
+                    task_pid: "1599841"
+                    tasks_per_node: "4"
+                    topology_addr: global.group5.nid001097
+                    topology_addr_pattern: switch.switch.node
+                    umask: "0007"
+                startedAt: "2026-08-10T17:11:59.161170Z"
+                writerId: 0o1uif2j9m1jjt1s88zfslexwsc8rqpc
+        m: []
+        python_version: 3.11.15
+        t:
+            "1":
+                - 1
+                - 5
+                - 49
+                - 53
+                - 83
+            "2":
+                - 1
+                - 5
+                - 49
+                - 53
+                - 83
+            "3":
+                - 13
+                - 16
+                - 61
+            "4": 3.11.15
+            "5": 0.28.1
+            "12": 0.28.1
+            "13": linux-x86_64
+batch size:
+    value: 32
+distill:
+    value: false
+distill_T:
+    value: 4
+distill_alpha:
+    value: 0.5
+distill_beta:
+    value: 0.5
+epochs:
+    value: 10
+fine_tune:
+    value: true
+learning_rate:
+    value: 1e-06
+mode:
+    value: classifier
+size:
+    value: large

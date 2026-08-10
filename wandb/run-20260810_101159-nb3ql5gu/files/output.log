@@ -1,0 +1,51 @@
+Epoch [1/10] Loss: 0.4899, Val Loss: 0.4012 , lr: 9.755282581475767e-07
+Class Loss: 0.4899, Class Val Loss: 0.4012
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 0 is 215.6743369102478 sec
+replacing best checkpoint ...
+Epoch 1 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_pretrain_l_qg_int_i300_e10.pt
+Epoch [2/10] Loss: 0.3924, Val Loss: 0.3806 , lr: 9.045084971874737e-07
+Class Loss: 0.3924, Class Val Loss: 0.3806
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 1 is 277.4269208908081 sec
+replacing best checkpoint ...
+Epoch 2 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_pretrain_l_qg_int_i300_e10.pt
+Epoch [3/10] Loss: 0.3839, Val Loss: 0.3820 , lr: 7.938926261462365e-07
+Class Loss: 0.3839, Class Val Loss: 0.3820
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 2 is 152.9874186515808 sec
+Epoch [4/10] Loss: 0.3761, Val Loss: 0.3770 , lr: 6.545084971874736e-07
+Class Loss: 0.3761, Class Val Loss: 0.3770
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 3 is 153.28526282310486 sec
+replacing best checkpoint ...
+Epoch 4 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_pretrain_l_qg_int_i300_e10.pt
+Epoch [5/10] Loss: 0.3751, Val Loss: 0.3733 , lr: 5e-07
+Class Loss: 0.3751, Class Val Loss: 0.3733
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 4 is 152.98751401901245 sec
+replacing best checkpoint ...
+Epoch 5 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_pretrain_l_qg_int_i300_e10.pt
+Epoch [6/10] Loss: 0.3682, Val Loss: 0.3761 , lr: 3.454915028125263e-07
+Class Loss: 0.3682, Class Val Loss: 0.3761
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 5 is 152.8569462299347 sec
+Epoch [7/10] Loss: 0.3695, Val Loss: 0.3779 , lr: 2.0610737385376348e-07
+Class Loss: 0.3695, Class Val Loss: 0.3779
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 6 is 153.129869222641 sec
+Epoch [8/10] Loss: 0.3689, Val Loss: 0.3695 , lr: 9.549150281252632e-08
+Class Loss: 0.3689, Class Val Loss: 0.3695
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 7 is 152.5475082397461 sec
+replacing best checkpoint ...
+Epoch 8 | Training checkpoint saved at /pscratch/sd/m/mbenyas/best_model_fine_tune_pretrain_l_qg_int_i300_e10.pt
+Epoch [9/10] Loss: 0.3705, Val Loss: 0.3712 , lr: 2.4471741852423233e-08
+Class Loss: 0.3705, Class Val Loss: 0.3712
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 8 is 176.95945572853088 sec
+Epoch [10/10] Loss: 0.3705, Val Loss: 0.3723 , lr: 0.0
+Class Loss: 0.3705, Class Val Loss: 0.3723
+Gen Loss: 0.0000, Gen Val Loss: 0.0000
+Time taken for epoch 9 is 152.76568746566772 sec
+Training Complete, best loss: 0.36952 at epoch 7!
