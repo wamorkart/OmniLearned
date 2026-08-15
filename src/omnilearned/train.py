@@ -1,8 +1,9 @@
+import csv
 import json
 import numpy as np
 import torch
 import torch.nn as nn
-from omnilearned.network import PET2, DeepSets
+from omnilearned.network import PET2, DeepSets, MLPStudent
 from omnilearned.dataloader import load_data
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -23,6 +24,7 @@ from omnilearned.utils import (
     restore_checkpoint,
     get_model_parameters,
     get_deepsets_parameters,
+    get_mlp_parameters,
 )
 
 import time
@@ -31,6 +33,32 @@ import torch.amp as amp
 
 torch.set_float32_matmul_precision("high")
 torch._dynamo.config.verbose = False
+
+
+def _log_heartbeat(epoch, batch_idx):
+    # Cheap per-rank progress+resource probe (no extra deps) to help localize
+    # the 2026-08-07 recurring mid-training NCCL hang: if a worker's RSS/open
+    # file-handle count is climbing toward the node ceiling right before a
+    # rank stops responding, this shows it without needing a live debugger
+    # attach during the hang window.
+    try:
+        with open("/proc/self/status") as f:
+            status = f.read()
+        rss_kb = int(
+            next(l for l in status.splitlines() if l.startswith("VmRSS:")).split()[1]
+        )
+    except Exception:
+        rss_kb = -1
+    try:
+        open_fds = len(os.listdir("/proc/self/fd"))
+    except Exception:
+        open_fds = -1
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    print(
+        f"[heartbeat] rank={rank} epoch={epoch} iter={batch_idx} "
+        f"rss_mb={rss_kb / 1024:.0f} open_fds={open_fds}",
+        flush=True,
+    )
 
 
 def get_logs(device):
@@ -59,6 +87,7 @@ def train_step(
     use_event_loss=False,
     iterations_per_epoch=-1,
     use_amp=False,
+    amp_dtype=torch.float16,
     gscaler=None,
     ema_model=None,
     ema_decay=0.9999,
@@ -67,6 +96,7 @@ def train_step(
     distill_beta=0.5,
     distill_T=4.0,
     distill_teacher_slice=None,
+    epoch=None,
 ):
     model.train()
 
@@ -78,6 +108,9 @@ def train_step(
     data_iter = iter(dataloader)
 
     for batch_idx in range(iterations_per_epoch):
+        if batch_idx % 100 == 0:
+            _log_heartbeat(epoch, batch_idx)
+
         try:
             batch = next(data_iter)
         except StopIteration:
@@ -102,6 +135,7 @@ def train_step(
         with amp.autocast(
             "cuda:{}".format(device) if torch.cuda.is_available() else "cpu",
             enabled=use_amp,
+            dtype=amp_dtype,
         ):
             outputs = model(X, y, **model_kwargs)
             loss = get_loss(
@@ -270,6 +304,7 @@ def train_model(
     loss_init=np.inf,
     best_epoch_init=None,
     use_amp=False,
+    amp_dtype=torch.float16,
     run=None,
     ema_model=None,
     ema_decay=0.999,
@@ -291,7 +326,10 @@ def train_model(
         "bestValLoss": loss_init,
         "bestEpoch": epoch_init if best_epoch_init is None else best_epoch_init,
     }
-    if use_amp:
+    if use_amp and amp_dtype == torch.float16:
+        # GradScaler's loss-scaling only guards against fp16 underflow; bf16's
+        # wider exponent range doesn't need it and scaling can push bf16
+        # values toward overflow instead, so skip it for that dtype.
         gscaler = amp.GradScaler()
     else:
         gscaler = None
@@ -315,6 +353,7 @@ def train_model(
             use_event_loss=use_event_loss,
             iterations_per_epoch=iterations_per_epoch,
             use_amp=use_amp,
+            amp_dtype=amp_dtype,
             gscaler=gscaler,
             ema_model=ema_model,
             ema_decay=ema_decay,
@@ -323,6 +362,7 @@ def train_model(
             distill_beta=distill_beta,
             distill_T=distill_T,
             distill_teacher_slice=distill_teacher_slice,
+            epoch=epoch,
         )
         val_logs = val_step(
             model,
@@ -369,6 +409,24 @@ def train_model(
             print(
                 "Time taken for epoch {} is {} sec".format(epoch, time.time() - start)
             )
+
+            # Always-on per-epoch CSV log, independent of --wandb, so
+            # progress survives even if a session is killed before the
+            # end-of-run training_{save_tag}.json is written.
+            epoch_row = {
+                "epoch": epoch + 1,
+                "lr": lr_scheduler.get_last_lr()[0],
+                "time_sec": time.time() - start,
+                **{f"train_{key}": train_logs[key] for key in train_logs},
+                **{f"val_{key}": val_logs[key] for key in val_logs},
+            }
+            log_path = os.path.join(output_dir, f"epoch_log_{save_tag}.csv")
+            write_header = not os.path.exists(log_path)
+            with open(log_path, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=list(epoch_row.keys()))
+                if write_header:
+                    writer.writeheader()
+                writer.writerow(epoch_row)
 
         if losses["val_loss"][-1] < tracker["bestValLoss"]:
             tracker["bestValLoss"] = losses["val_loss"][-1]
@@ -456,6 +514,7 @@ def run(
     epoch: int = 15,
     warmup_epoch: int = 1,
     use_amp: bool = False,
+    amp_dtype: str = "fp16",
     optim: str = "lion",
     sched: str = "cosine",
     b1: float = 0.95,
@@ -487,6 +546,11 @@ def run(
     if distill_teacher_slice:
         parts = distill_teacher_slice.split(":")
         _teacher_slice = (int(parts[0]), int(parts[1]))
+
+    amp_dtypes = {"fp16": torch.float16, "bf16": torch.bfloat16}
+    if amp_dtype not in amp_dtypes:
+        raise ValueError(f"--amp-dtype must be one of {list(amp_dtypes)}, got '{amp_dtype}'")
+    _amp_dtype = amp_dtypes[amp_dtype]
 
     local_rank, rank, size = ddp_setup()
 
@@ -529,8 +593,16 @@ def run(
             mlp_drop=mlp_drop,
             **ds_params,
         )
+    elif arch == "mlp":
+        mlp_params = get_mlp_parameters(model_size)
+        model = MLPStudent(
+            input_dim=num_feat,
+            num_classes=num_classes,
+            mode=mode,
+            **mlp_params,
+        )
     else:
-        raise ValueError(f"Unknown arch '{arch}'. Choose from: pet2, deep-sets")
+        raise ValueError(f"Unknown arch '{arch}'. Choose from: pet2, deep-sets, mlp")
 
     if rank == 0:
         d = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -681,6 +753,22 @@ def run(
             fine_tune=fine_tune,
         )
 
+    if wandb and num_workers > 0:
+        # Force the persistent DataLoader worker pool to fork now, before wandb.init()
+        # (below) starts its background async-service thread. If workers fork *after*
+        # wandb is live, they inherit wandb's Python objects but not the background
+        # thread that services them -- when Python's GC later finalizes one of those
+        # inherited objects inside a worker (a matter of allocation-pressure timing,
+        # not anything data-dependent), the finalizer calls back into wandb expecting
+        # that thread to respond and blocks forever, freezing the worker mid-read and
+        # hanging the whole DDP job (all other ranks then hang waiting on this rank's
+        # next collective). Confirmed via a live py-spy capture -- see
+        # distill-lazy-teacher-progress memory, 2026-08-08 root-cause entry. Discarding
+        # the iterator here is safe: with persistent_workers=True, the DataLoader caches
+        # and reuses the same worker pool on every later `iter()` call.
+        next(iter(train_loader))
+        next(iter(val_loader))
+
     if wandb:
         import wandb
 
@@ -742,6 +830,7 @@ def run(
         loss_init=loss_init,
         best_epoch_init=best_epoch_init,
         use_amp=use_amp,
+        amp_dtype=_amp_dtype,
         run=run,
         ema_model=ema_model,
         distill=distill,

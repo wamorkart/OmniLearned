@@ -73,6 +73,9 @@ def train(
     epoch: int = typer.Option(10, help="Number of epochs"),
     warmup_epoch: int = typer.Option(0, help="Number of learning rate warmup epochs"),
     use_amp: bool = typer.Option(False, help="Use amp"),
+    amp_dtype: str = typer.Option(
+        "fp16", help="Autocast dtype when --use-amp is set: fp16 or bf16"
+    ),
     clip_inputs: bool = typer.Option(
         False, help="Clip input dataset to be within R=0.8 and atl least 500 MeV"
     ),
@@ -111,7 +114,7 @@ def train(
              "2-11 from a 210-class pretrained teacher for a 10-class student. "
              "Default '' keeps all columns.",
     ),
-    arch: str = typer.Option("pet2", help="Student architecture: pet2 or deep-sets"),
+    arch: str = typer.Option("pet2", help="Student architecture: pet2, deep-sets, or mlp"),
 ):
     run_training(
         outdir,
@@ -147,6 +150,7 @@ def train(
         epoch,
         warmup_epoch,
         use_amp,
+        amp_dtype,
         optim,
         sched,
         b1,
@@ -167,6 +171,7 @@ def train(
         distill_beta=distill_beta,
         distill_T=distill_T,
         distill_teacher_slice=distill_teacher_slice,
+        arch=arch,
     )
 
 
@@ -292,6 +297,7 @@ def evaluate(
         "--chunk-idx",
         help="Which chunk (0..num_chunks-1) this invocation processes.",
     ),
+    arch: str = typer.Option("pet2", help="Student architecture: pet2, deep-sets, or mlp"),
 ):
     run_evaluation(
         indir,
@@ -322,6 +328,7 @@ def evaluate(
         dataset_type=dataset_type,
         num_chunks=num_chunks,
         chunk_idx=chunk_idx,
+        arch=arch,
     )
 
 

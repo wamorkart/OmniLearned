@@ -826,6 +826,80 @@ class DeepSets(nn.Module):
         }
 
 
+class MLPStudentBody(nn.Module):
+    """Masked mean-pool over raw per-particle features, then one hidden
+    layer. Unlike DeepSetsBody, there is no per-particle embedding -- the
+    mean is taken directly over the raw kinematic features."""
+
+    def __init__(self, input_dim, hidden_dim=64):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.act = nn.ReLU()
+
+    def forward(self, x, cond=None, pid=None, add_info=None):
+        mask = (x[:, :, 2:3] != 0).float()  # (B, N, 1)
+        n_valid = mask.sum(dim=1).clamp(min=1.0)
+        pooled = (x * mask).sum(dim=1) / n_valid  # masked mean pool -> (B, input_dim)
+        return self.act(self.fc1(pooled))
+
+
+class MLPStudent(nn.Module):
+    """
+    Minimal MLP classifier student for distillation from PET2: masked
+    mean-pool over raw features -> one hidden layer -> linear classifier.
+    No per-particle embedding (unlike DeepSets/PET2) -- intended as a
+    lower-bound baseline, not a competitive architecture.
+
+    Drop-in replacement for PET2/DeepSets in classifier mode: same
+    forward() output dict and same .body / .classifier / .generator
+    attributes so save_checkpoint / restore_checkpoint work unchanged.
+    """
+
+    def __init__(
+        self,
+        input_dim,
+        num_classes=2,
+        hidden_dim=64,
+        mode="classifier",
+    ):
+        super().__init__()
+        if mode != "classifier":
+            raise ValueError(f"MLPStudent supports classifier mode only, got '{mode}'")
+        self.mode = mode
+        self.generator = None  # checkpoint compatibility with PET2 interface
+
+        self.body = MLPStudentBody(input_dim=input_dim, hidden_dim=hidden_dim)
+        self.classifier = nn.Linear(hidden_dim, num_classes)
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+        self.apply(_init_weights)
+
+    def no_weight_decay(self):
+        return set()
+
+    def forward(self, x, y, cond=None, pid=None, add_info=None):
+        z = self.body(x, cond=cond, pid=pid, add_info=add_info)  # (B, D)
+        y_pred = self.classifier(z)                               # (B, num_classes)
+        return {
+            "y_pred": y_pred,
+            "y_perturb": None,
+            "z_pred": None,
+            "v": None,
+            "v_weight": None,
+            "x_body": None,
+            "z_body": None,
+            "alpha": torch.ones(x.shape[0], device=x.device),
+        }
+
+
 class MLPGEN(nn.Module):
     def __init__(
         self,

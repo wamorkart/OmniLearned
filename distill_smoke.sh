@@ -14,7 +14,13 @@
 
 set -euo pipefail
 
+module load conda
+conda activate /global/homes/t/twamorka/omnilearned-clean/env
 module load pytorch
+
+# HDF5 file locking causes slow/hanging opens over Lustre-backed CFS; already
+# worked around this way elsewhere in the repo (camels.sh, quijote.sh).
+export HDF5_USE_FILE_LOCKING=FALSE
 
 # Force the single-process path (in case these leaked into the env).
 unset MASTER_ADDR RANK WORLD_SIZE WORLD_RANK LOCAL_RANK

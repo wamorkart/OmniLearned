@@ -1,6 +1,7 @@
 import torch
 import torch.distributed as dist
 import h5py
+import hashlib
 import shutil
 from argparse import ArgumentParser
 from torch.utils.data import Dataset, DataLoader
@@ -179,8 +180,11 @@ class HEPDataset(Dataset):
             teacher_file_paths (list): List parallel to file_paths; each entry is
                 the path to a companion teacher-logits .h5 (with a `teacher_logits`
                 dataset indexed by sample_idx) for the matching source file, or
-                None if no teacher logits are available for it. Read lazily, one
-                row per sample, exactly like the source `data` dataset.
+                None if the source file already has `teacher_logits` merged into
+                it directly (see merge_teacher_logits.py) or no teacher logits are
+                available for it. A source file's own `teacher_logits` dataset,
+                when present, always takes priority over the companion file --
+                merged files need no second handle open per sample.
         """
         self.use_cond = use_cond
         self.use_pid = use_pid
@@ -190,11 +194,14 @@ class HEPDataset(Dataset):
         self.label_shift = label_shift
 
         self.file_paths = file_paths
-        # Size the LRU to hold every source file so handles opened during
-        # epoch 1 are never evicted. With persistent_workers=True each worker
-        # keeps its handles warm for the entire training run.
-        n_files = max(128, len(file_paths) if file_paths else 128)
-        self._file_cache = _LRUFileCache(maxsize=n_files)
+        # Bounded LRU (see _LRUFileCache docstring): with thousands of files in
+        # the full pretrain mixture, sizing this to len(file_paths) means it
+        # never evicts, so all num_workers persistent workers accumulate an
+        # open h5py.File handle for every unique file they touch over the
+        # course of training -> unbounded host RAM growth that can eventually
+        # stall/OOM-kill a worker. Keep the cap at 128 regardless of dataset
+        # size, matching what the class was actually designed for.
+        self._file_cache = _LRUFileCache(maxsize=128)
         self.file_indices = file_indices
         self.clip_inputs = clip_inputs
         self.mode = mode
@@ -203,8 +210,7 @@ class HEPDataset(Dataset):
             self.nevts = len(self.file_indices)
 
         self.teacher_file_paths = teacher_file_paths
-        n_teacher = max(128, len(teacher_file_paths) if teacher_file_paths else 128)
-        self._teacher_cache = _LRUFileCache(maxsize=n_teacher)
+        self._teacher_cache = _LRUFileCache(maxsize=128)
 
         # random.shuffle(self.file_indices)  # Shuffle data entries globally
 
@@ -278,7 +284,13 @@ class HEPDataset(Dataset):
                 f["data_pid"][sample_idx], dtype=data_dtype
             )
 
-        if (
+        if "teacher_logits" in f:
+            # Merged file (merge_teacher_logits.py): logits live alongside
+            # `data`/`pid` in the same handle, no second file open needed.
+            sample["teacher_logits"] = torch.from_numpy(
+                f["teacher_logits"][sample_idx].astype(np.float32)
+            )
+        elif (
             self.teacher_file_paths is not None
             and self.teacher_file_paths[file_idx] is not None
         ):
@@ -391,8 +403,19 @@ def load_data(
         # Companion teacher-logits .h5, one per source file, in the SAME order.
         # Path mirrors build_teacher_h5.py:
         #   <teacher_labels_dir>/<dataset>/<split>/<source_stem>.h5
+        # A source file already carrying its own `teacher_logits` dataset (see
+        # merge_teacher_logits.py) needs no companion -- HEPDataset reads it
+        # straight from the source handle, so we append None here.
         if teacher_on:
             for h5 in h5_files:
+                try:
+                    with h5py.File(h5, "r") as hf:
+                        merged_in = "teacher_logits" in hf
+                except OSError:
+                    merged_in = False
+                if merged_in:
+                    teacher_file_list.append(None)
+                    continue
                 companion = (
                     Path(teacher_labels_dir)
                     / names[iname]
@@ -402,7 +425,8 @@ def load_data(
                 if not companion.is_file():
                     raise FileNotFoundError(
                         f"Missing teacher companion for {names[iname]}/{dataset_type}: "
-                        f"{companion} (run build_teacher_h5.py for this dataset/split)"
+                        f"{companion} (run build_teacher_h5.py for this dataset/split, "
+                        "or merge_teacher_logits.py to fold it into the source file)"
                     )
                 teacher_file_list.append(str(companion))
 
@@ -422,6 +446,41 @@ def load_data(
                     return False
             return True
 
+        def _file_fingerprint(files):
+            # Cheap (stat, not h5py open) fingerprint of the file list so a
+            # later run can skip _validate_index's per-file HDF5 opens
+            # entirely once nothing on disk has changed since it last passed.
+            parts = [f"{f.name}:{(st := f.stat()).st_size}:{int(st.st_mtime)}" for f in files]
+            return hashlib.sha1("\n".join(parts).encode()).hexdigest()
+
+        def _validated(candidate, arr, files):
+            # _validate_index opens every unique file referenced in the index
+            # (up to ~thousands for the pretrain mixture) via h5py -- doing
+            # that independently on all DDP ranks is a Nx redundant Lustre
+            # burst. Only rank 0 pays the cost (using a fingerprint sentinel
+            # to skip it entirely on repeat runs against unchanged data);
+            # every other rank just trusts the broadcast result.
+            distributed_on = dist.is_available() and dist.is_initialized()
+            if rank == 0 or not distributed_on:
+                fp_path = candidate.with_suffix(candidate.suffix + ".fp")
+                current_fp = _file_fingerprint(files)
+                if fp_path.is_file() and fp_path.read_text().strip() == current_fp:
+                    is_valid = True
+                else:
+                    is_valid = _validate_index(arr, files)
+                    if is_valid:
+                        try:
+                            fp_path.write_text(current_fp)
+                        except OSError:
+                            pass
+            else:
+                is_valid = None
+            if distributed_on:
+                result = [is_valid]
+                dist.broadcast_object_list(result, src=0)
+                is_valid = result[0]
+            return bool(is_valid)
+
         scratch_root = os.environ.get("SCRATCH")
         scratch_index = (
             Path(scratch_root)
@@ -440,12 +499,8 @@ def load_data(
         # has been observed to fail with "could only read 0 elements".
         # $SCRATCH (also Lustre, but tuned for parallel I/O) handles the
         # concurrent read pattern reliably once the file is freshly written.
-        if (
-            scratch_index is not None
-            and index_file.is_file()
-            and not scratch_index.is_file()
-        ):
-            if rank == 0:
+        if scratch_index is not None and index_file.is_file():
+            if rank == 0 and not scratch_index.is_file():
                 scratch_index.parent.mkdir(parents=True, exist_ok=True)
                 tmp = scratch_index.with_suffix(scratch_index.suffix + ".tmp")
                 shutil.copyfile(str(index_file), str(tmp))
@@ -461,13 +516,14 @@ def load_data(
             # Load fully into RAM: mmap on Lustre/CFS is unreliable with
             # concurrent DDP ranks and can fail in mmap.mmap with large indices.
             arr = np.load(candidate)
-            if _validate_index(arr, h5_files):
+            if _validated(candidate, arr, h5_files):
                 indices_arr = arr
                 break
-            print(
-                f"WARNING: cached index {candidate} is inconsistent with current "
-                f"file ordering for dataset {names[iname]}; will regenerate"
-            )
+            if rank == 0:
+                print(
+                    f"WARNING: cached index {candidate} is inconsistent with current "
+                    f"file ordering for dataset {names[iname]}; will regenerate"
+                )
 
         if indices_arr is None:
             print(f"Creating index list for dataset {names[iname]}")
@@ -542,12 +598,6 @@ def load_data(
         "cms_qcd": 201,
         "cms_bsm": 202,
     }
-
-    if teacher_on and rank == 0:
-        print(
-            f"Teacher logits: {len(teacher_file_list)} companion .h5 files "
-            f"(tag={teacher_tag}, lazily read per sample)"
-        )
 
     data = HEPDataset(
         file_list,

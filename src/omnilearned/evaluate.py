@@ -1,5 +1,5 @@
 import torch
-from omnilearned.network import PET2
+from omnilearned.network import PET2, DeepSets, MLPStudent
 from omnilearned.dataloader import load_data
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -10,6 +10,8 @@ from omnilearned.utils import (
     restore_checkpoint,
     pad_array,
     get_model_parameters,
+    get_deepsets_parameters,
+    get_mlp_parameters,
 )
 from omnilearned.diffusion import generate
 import os
@@ -228,29 +230,53 @@ def run(
     dataset_type: str = "test",
     num_chunks: int = 1,
     chunk_idx: int = 0,
+    arch: str = "pet2",
 ):
     local_rank, rank, size = ddp_setup()
 
-    model_params = get_model_parameters(model_size)
-
     # set up model
-    model = PET2(
-        input_dim=num_feat,
-        use_int=interaction,
-        local_int=local_interaction,
-        int_type=interaction_type,
-        conditional=conditional,
-        cond_dim=num_cond,
-        pid=use_pid,
-        add_info=use_add,
-        add_dim=num_add,
-        mode=mode,
-        num_classes=num_classes,
-        num_gen_classes=num_gen_classes,
-        num_coord=num_coord,
-        K=K,
-        **model_params,
-    )
+    if arch == "pet2":
+        model_params = get_model_parameters(model_size)
+        model = PET2(
+            input_dim=num_feat,
+            use_int=interaction,
+            local_int=local_interaction,
+            int_type=interaction_type,
+            conditional=conditional,
+            cond_dim=num_cond,
+            pid=use_pid,
+            add_info=use_add,
+            add_dim=num_add,
+            mode=mode,
+            num_classes=num_classes,
+            num_gen_classes=num_gen_classes,
+            num_coord=num_coord,
+            K=K,
+            **model_params,
+        )
+    elif arch == "deep-sets":
+        ds_params = get_deepsets_parameters(model_size)
+        model = DeepSets(
+            input_dim=num_feat,
+            num_classes=num_classes,
+            pid=use_pid,
+            add_info=use_add,
+            add_dim=num_add,
+            conditional=conditional,
+            cond_dim=num_cond,
+            mode=mode,
+            **ds_params,
+        )
+    elif arch == "mlp":
+        mlp_params = get_mlp_parameters(model_size)
+        model = MLPStudent(
+            input_dim=num_feat,
+            num_classes=num_classes,
+            mode=mode,
+            **mlp_params,
+        )
+    else:
+        raise ValueError(f"Unknown arch '{arch}'. Choose from: pet2, deep-sets, mlp")
 
     if rank == 0:
         d = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

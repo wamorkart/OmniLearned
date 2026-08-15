@@ -28,6 +28,14 @@ while [ "$LOOP" -lt "$MAX_LOOPS" ]; do
 
     # salloc runs bash distill_train.sh on the submit node;
     # the srun inside distill_train.sh steps into the 4-node allocation.
+    #
+    # set +e/-e around the pipeline: with `set -e` + `pipefail` (both on
+    # above), a non-zero salloc exit makes the whole pipeline non-zero and
+    # -e kills the script right here, before EXIT is even read -- so the
+    # resubmit logic below never runs. This exact bug (see
+    # pretrain_loop_jetclass_l.sh) silently killed the loop on the Jul 3
+    # NCCL crash and let the run sit dead, unnoticed, for weeks.
+    set +e
     salloc \
         -C gpu \
         -q interactive \
@@ -39,6 +47,7 @@ while [ "$LOOP" -lt "$MAX_LOOPS" ]; do
         bash "$SCRIPT_DIR/distill_train.sh" \
         2>&1 | tee "$LOG_FILE"
     EXIT="${PIPESTATUS[0]}"
+    set -e
 
     MSG="[$(date '+%Y-%m-%d %H:%M:%S')] Session ${LOOP} exited with code ${EXIT}"
     echo "$MSG" | tee -a "$LOG_DIR/summary.log"

@@ -16,7 +16,9 @@ import requests
 # teacher-logit shards occasionally stall one rank long enough to trip the
 # watchdog and force-abort the whole 16-GPU job. Widen it so a slow shard open
 # degrades throughput instead of killing hours of training.
-DDP_TIMEOUT = timedelta(minutes=90)
+# Overridable via DDP_TIMEOUT_MIN so a debugging run can shorten it (fail fast
+# and get a live-attach window) without touching this default for real runs.
+DDP_TIMEOUT = timedelta(minutes=int(os.environ.get("DDP_TIMEOUT_MIN", "90")))
 
 
 def get_model_parameters(model_size):
@@ -44,6 +46,14 @@ def get_model_parameters(model_size):
         model_dict["num_heads"] = 32
         model_dict["base_dim"] = 1024
         model_dict["mlp_ratio"] = 2
+
+    elif model_size == "micro":
+        model_dict["num_transformers"] = 4
+        model_dict["num_transformers_head"] = 2
+        model_dict["num_tokens"] = 4
+        model_dict["num_heads"] = 4
+        model_dict["base_dim"] = 64
+        model_dict["mlp_ratio"] = 2   
     else:
         raise ValueError(f"Invalid model size: {model_size}")
 
@@ -58,6 +68,20 @@ def get_deepsets_parameters(model_size):
         return {"base_dim": 256, "num_phi_layers": 4, "num_rho_layers": 3}
     elif model_size == "large":
         return {"base_dim": 512, "num_phi_layers": 5, "num_rho_layers": 4}
+    else:
+        raise ValueError(f"Invalid model size: {model_size}")
+
+
+def get_mlp_parameters(model_size):
+    """Architecture params for the minimal MLP student (hidden dim only)."""
+    if model_size == "micro":
+        return {"hidden_dim": 32}
+    elif model_size == "small":
+        return {"hidden_dim": 64}
+    elif model_size == "medium":
+        return {"hidden_dim": 128}
+    elif model_size == "large":
+        return {"hidden_dim": 256}
     else:
         raise ValueError(f"Invalid model size: {model_size}")
 
@@ -472,7 +496,7 @@ def restore_checkpoint(
                     checkpoint["ema_generator"], strict=True
                 )
 
-    if optimizer is not None:
+    if optimizer is not None and not fine_tune:
         try:
             optimizer.load_state_dict(checkpoint["optimizer"])
         except Exception:
