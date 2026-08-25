@@ -27,13 +27,13 @@ OmniLearned expects one row per jet (not per dijet event):
 
 Idealized CWoLa setup: no generative model is trained, background sampled from predefined distribution.
 
-Builds two independent pools, each with 80/10/10 train/val/test split:
-    lhco_ad_data  background (all) + signal (up to --nsig injected events),
-                  both from the base files, pid=0
-    lhco_ad_bkg   the independent extended-background file, pid=1 -- the
-                  "true background" stand-in a generator would otherwise have
-                  produced, kept fully disjoint from lhco_ad_data so the
-                  classifier isn't trained to separate a sample from itself
+Builds dataset "lhco_ad" with two separate files per split (data.h5,
+bkg.h5). Each file gets an independent 80/10/10 train/val/test split:
+    data.h5  background (all) + signal (up to --nsig injected events), pid=0
+    bkg.h5   the independent extended-background file, pid=1 -- the
+             "true background" stand-in a generator would otherwise have
+             produced, kept fully disjoint from data.h5 so the classifier
+             isn't trained to separate a sample from itself
 
 
 """
@@ -112,12 +112,13 @@ def split_indices(n, val_frac, test_frac, rng):
     return {"val": perm[:n_val], "test": perm[n_val : n_val + n_test], "train": perm[n_val + n_test :]}
 
 
-def write_pool(name, out_dir, rows, val_frac, test_frac, rng):
-    """Split `rows` into train/val/test and write each as out_dir/name/<split>/name.h5."""
+def write_pool(dataset, filename, out_dir, rows, val_frac, test_frac, rng):
+    """Split `rows` into train/val/test and write each as
+    out_dir/dataset/<split>/filename.h5."""
     n = rows["data"].shape[0]
     counts = {}
     for split, idx in split_indices(n, val_frac, test_frac, rng).items():
-        path = Path(out_dir) / name / split / f"{name}.h5"
+        path = Path(out_dir) / dataset / split / f"{filename}.h5"
         path.parent.mkdir(parents=True, exist_ok=True)
         with h5py.File(path, "w") as f:
             for key, arr in rows.items():
@@ -143,9 +144,9 @@ def main():
     data_rows = {k: np.concatenate([bkg[k], sig[k]]) for k in bkg}
     bkg_rows = build_rows(BACKGROUND_EXTENDED_FILES, pid_label=1)
 
-    for name, rows in (("lhco_ad_data", data_rows), ("lhco_ad_bkg", bkg_rows)):
-        counts = write_pool(name, OUT_DIR, rows, args.val_frac, args.test_frac, rng)
-        print(f"{name}: {counts}, total={sum(counts.values())}")
+    for filename, rows in (("data", data_rows), ("bkg", bkg_rows)):
+        counts = write_pool("lhco_ad", filename, OUT_DIR, rows, args.val_frac, args.test_frac, rng)
+        print(f"lhco_ad/{filename}: {counts}, total={sum(counts.values())}")
 
 
 if __name__ == "__main__":

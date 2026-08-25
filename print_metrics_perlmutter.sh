@@ -9,16 +9,16 @@ conda activate ol_distill
 #  EDIT THESE TWO LINES PER RUN -- everything else derives from them
 # ============================================================
 SAVE_TAG=distill_top_small_scratch_a05_T4   # full save-tag as passed to `evaluate --save-tag`
-QUANTIZATION=none                           # "none", "int8", "int8dq", or "bf16" -- must match the evaluate_perlmutter.sh run
+QUANTIZATION=int8dq                           # "none", "int8", "int8dq", or "bf16" -- must match the evaluate_perlmutter.sh run
 # ============================================================
 
-case "$QUANTIZATION" in
-    none|int8|int8dq|bf16) ;;
-    *)
-        echo "ERROR: QUANTIZATION must be 'none', 'int8', 'int8dq', or 'bf16', got '$QUANTIZATION'" >&2
-        exit 1
-        ;;
-esac
+# case "$QUANTIZATION" in
+#     none|int8|int8dq|bf16) ;;
+#     *)
+#         echo "ERROR: QUANTIZATION must be 'none', 'int8', 'int8dq', or 'bf16', got '$QUANTIZATION'" >&2
+#         exit 1
+#         ;;
+# esac
 
 DATASET=top
 DIR="/pscratch/sd/m/mbenyas/${SAVE_TAG}_${QUANTIZATION}"

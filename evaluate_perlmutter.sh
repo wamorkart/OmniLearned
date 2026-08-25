@@ -14,16 +14,16 @@ export MASTER_ADDR=$(hostname)
 #  EDIT THESE TWO LINES PER RUN -- everything else derives from them
 # ============================================================
 SAVE_TAG=distill_top_small_scratch_a05_T4   # checkpoint name, under $CHECKPOINT_DIR
-QUANTIZATION=none                           # "none", "int8", "int8dq", or "bf16"
+QUANTIZATION=int8dq                           # "none", "int8", "int8dq", or "bf16"
 # ============================================================
 
-case "$QUANTIZATION" in
-    none|int8|int8dq|bf16) ;;
-    *)
-        echo "ERROR: QUANTIZATION must be 'none', 'int8', 'int8dq', or 'bf16', got '$QUANTIZATION'" >&2
-        exit 1
-        ;;
-esac
+# case "$QUANTIZATION" in
+#     none|int8|int8dq|bf16) ;;
+#     *)
+#         echo "ERROR: QUANTIZATION must be 'none', 'int8', 'int8dq', or 'bf16', got '$QUANTIZATION'" >&2
+#         exit 1
+#         ;;
+# esac
 
 CHECKPOINT_DIR=/pscratch/sd/t/twamorka/omnilearned/checkpoints/
 OUTPUT_DIR=/pscratch/sd/m/mbenyas/${SAVE_TAG}_${QUANTIZATION}   # my own scratch -- where eval outputs land

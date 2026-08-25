@@ -345,23 +345,25 @@ def run(
     # print(model.body.embed.mlp.fc1.weight.dtype)
     # print(model.body.embed.mlp.fc1.weight[0, :5])
 
-    from torchao.quantization import quantize_, int8_weight_only, int8_dynamic_activation_int8_weight
+    from torchao.quantization import quantize_, int4_weight_only, int8_weight_only, int8_dynamic_activation_int8_weight
 
     # --- Quantization (optional) ---
-    quantize_choices = ("none", "int8", "int8dq", "bf16")  # "fp16", "int4" temporarily disabled
+    quantize_choices = ("none", "int8", "int4", "int8dq", "bf16")  # "fp16", "int4" temporarily disabled
     quantize_choice = os.environ.get("QUANTIZE", "none").lower()
     if quantize_choice not in quantize_choices:
         raise ValueError(f"QUANTIZE must be one of {quantize_choices}, got '{quantize_choice}'")
     if quantize_choice == "int8":
         print("[eval] applying INT8 weight-only quantization")
         quantize_(model, int8_weight_only())
-        # model = torch.compile(model, dynamic=True)
+    if quantize_choice == "int4":
+        print("[eval] applying INT4 weight-only quantization")
+        quantize_(model, int4_weight_only())
     elif quantize_choice == "int8dq":
-        def _int8dq_filter(module, fqn):
-            return isinstance(module, torch.nn.Linear) and "interaction" not in fqn
+        # def _int8dq_filter(module, fqn):
+        #     return isinstance(module, torch.nn.Linear) and "interaction" not in fqn
         if is_master_node():
             print("[eval] applying INT8 dynamic activation + INT8 weight quantization")
-        quantize_(model, int8_dynamic_activation_int8_weight(), filter_fn=_int8dq_filter)
+        quantize_(model, int8_dynamic_activation_int8_weight()) #filter_fn=_int8dq_filter)
     elif quantize_choice == "bf16":
         if is_master_node():
             print("[eval] casting model weights to bfloat16")
@@ -369,6 +371,8 @@ def run(
 
     # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data.dtype)
     # print(model.module.body.embed.mlp.fc1.weight.tensor_impl.int_data[0, :5])
+
+    
 
     # model = DDP(
     #     model,
