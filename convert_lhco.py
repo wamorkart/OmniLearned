@@ -5,10 +5,6 @@ Pipeline: 'fastjet_awkward.ipynb'
 
 `salloc -N 1 -C cpu -q interactive -t 01:00:00 -A m3246` before running.
 
-Should be run right after fastjet_awkward.ipynb and getting those processed
-outputs. Note: doesn't take in the rel files, b/c those do a conversion not
-relevant to OmniLearned.
-
 `fastjet_awkward.ipynb` clusters raw LHCO events as follows:
     jet_data     (N, 2, 4)      N events, 2 jets/event, 4 numbers/jet = (pt, eta, phi, m)
     constituents (N, 2, P, 3)   N events, 2 jets/event, P particles/jet, 3 numbers/particle = (pt, eta, phi)
@@ -17,11 +13,11 @@ relevant to OmniLearned.
 saved separately for background, signal, and an independent extended-background
 sample as processed_data_{background,signal,background_extended}.h5.
 
-UPDATE: now input is FURTHER-preprocessed files from OmniLearn:
+Then 'preprocess_lhco.py' turns files into following format:
     jet  (N, 2, 5)      N events, 2 jets/event, 5 numbers/jet = (pt, eta, phi, mass, multiplicity)
     data (N, 2, P, 7)   N events, 2 jets/event, P particles/jet, 7 numbers/particle
                                                                     = (delta_eta, delta_phi, log(1-pT_rel), log_pt, log(1-E_rel), log_e, deltaR)
-of the form {train,val}_{background,signal}_{SB,SR,SR_extended}.h5
+saved as {train,val}_{background,signal}_{SB,SR,SR_extended}.h5
                                                                     
 OmniLearned expects one row per jet (not per dijet event):
     data   (N, M, 4)            N events, max M particles/jet, 4-5 numbers/particle 
