@@ -19,11 +19,15 @@ Then 'preprocess_lhco.py' turns files into following format:
                                                                     = (delta_eta, delta_phi, log(1-pT_rel), log_pt, log(1-E_rel), log_e, deltaR)
 saved as {train,val}_{background,signal}_{SB,SR,SR_extended}.h5
                                                                     
-OmniLearned expects one row per jet (not per dijet event):
-    data   (N, M, 4)            N events, max M particles/jet, 4-5 numbers/particle 
-                                                                    = (delta_eta, delta_phi, log_pt, log_e, optionally PID)
+OmniLearned to take in one row per EVENT, both jets' particles merged together
+(so a one-hot is needed to mark which jet each particle came from):
+    data   (N, 2P, 6)           N events, max 2P merged particles, 6 numbers/particle
+                                                                    = (delta_eta, delta_phi, log_pt, log_e,
+                                                                       onehot_jet0, onehot_jet1)
     pid    (N,)                 N events, 1 number/event = (0 if data, 1 if pure background)
-    global (N, 3)               N events, 3 numbers/event = (log jet pT, log jet mass, multiplicity / 100)
+    global (N, 11)              N events, 11 numbers/event = mjj, then per jet (log pT, eta, phi, log mass,
+                                                                    multiplicity / 100), jet0 then jet1
+                                                                    -- jet-level observables per torch_lhco.py's `jet` array
 
 Idealized CWoLa setup: no generative model is trained, background sampled from predefined distribution.
 
@@ -57,13 +61,16 @@ BACKGROUND_EXTENDED_FILES = [
 
 
 def load_source(paths):
-    """Concatenate jet/data across files (source's train+val; redoing the split in this script)."""
-    jets, datas = [], []
+    """Concatenate jet/data/mjj across files (source's train+val; redoing the
+    split in this script). Source's own `pid` field holds mjj (verified:
+    values sit in the 3300-3700 GeV SR window)."""
+    jets, datas, mjjs = [], [], []
     for path in paths:
         with h5py.File(path, "r") as f:
             jets.append(f["jet"][:])
             datas.append(f["data"][:])
-    return np.concatenate(jets), np.concatenate(datas)
+            mjjs.append(f["pid"][:])
+    return np.concatenate(jets), np.concatenate(datas), np.concatenate(mjjs)
 
 
 def apply_pt_cut(data):
@@ -74,9 +81,12 @@ def apply_pt_cut(data):
 
 def build_rows(paths, pid_label, nsig=None, rng=None):
     """Load one sample, apply the pT cut, optionally cap events at `nsig`
-    (sampled w/o replacement), and flatten each event into 2 per-jet rows.
-    pid_label is the classifier's training label (0=data, 1=background)."""
-    jet, data = load_source(paths)
+    (sampled w/o replacement), and merge each event's two jets into one row.
+    `data`'s last 2 columns are a one-hot marking which jet each particle
+    came from. `global` = mjj + each jet's own (log pT, eta, phi, log mass,
+    multiplicity/100). pid_label is the classifier's training label
+    (0=data, 1=background), one per event."""
+    jet, data, mjj = load_source(paths)
     data, valid = apply_pt_cut(data)
 
     n = jet.shape[0]
@@ -86,22 +96,30 @@ def build_rows(paths, pid_label, nsig=None, rng=None):
         evt_sel[rng.choice(n, size=nsig, replace=False)] = True
     pid = np.full(evt_sel.sum(), pid_label, dtype=np.int64)
 
-    data_rows, global_rows = [], []
+    data_blocks = []
+    global_cols = [mjj[evt_sel][:, None]]
     for j in range(2):
         deta, dphi, log_pt, log_e = (data[evt_sel, j, :, k] for k in (0, 1, 3, 5)) # extract 4 of 7 features
-        data_rows.append(np.stack([deta, dphi, log_pt, log_e], -1).astype(np.float32))
+        onehot = np.zeros(deta.shape + (2,), dtype=np.float32)
+        onehot[..., j] = 1.0
+        onehot *= valid[evt_sel, j][..., None]  # zero on padding, same as everything else
+        data_blocks.append(
+            np.concatenate([np.stack([deta, dphi, log_pt, log_e], -1), onehot], -1).astype(
+                np.float32
+            )
+        )
 
-        jet_pt = jet[evt_sel, j, 0]
+        jet_pt, jet_eta, jet_phi = (jet[evt_sel, j, k] for k in (0, 1, 2))
         jet_m = np.clip(jet[evt_sel, j, 3], 1e-3, None)  # avoid log(0)
         jet_mult = valid[evt_sel, j].sum(-1)
-        global_rows.append(
-            np.stack([np.log(jet_pt), np.log(jet_m), jet_mult / 100.0], -1).astype(np.float32)
+        global_cols.append(
+            np.stack([np.log(jet_pt), jet_eta, jet_phi, np.log(jet_m), jet_mult / 100.0], -1)
         )
 
     return {
-        "data": np.concatenate(data_rows),
-        "pid": np.concatenate([pid, pid]),
-        "global": np.concatenate(global_rows),
+        "data": np.concatenate(data_blocks, axis=1),
+        "pid": pid,
+        "global": np.concatenate(global_cols, axis=-1).astype(np.float32),
     }
 
 
