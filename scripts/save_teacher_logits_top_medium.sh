@@ -7,7 +7,7 @@
 # exactly, just pointed at the medium checkpoint/size and writing to its own
 # npz/companion dirs so it never touches the large teacher's cached logits.
 #
-# Only run this AFTER distill_loop_top_medium.sh has produced
+# Only run this AFTER `distill_loop_top.sh top_medium_a00_b10` has produced
 # best_model_distill_top_medium_scratch_a00_b10_T4.pt.
 #
 # Run inside an salloc GPU interactive job:
@@ -36,7 +36,7 @@ DATASET=top
 
 CKPT="${CHECKPOINT_DIR}/best_model_${TAG}.pt"
 if [ ! -f "$CKPT" ]; then
-    echo "ERROR: $CKPT not found -- run distill_loop_top_medium.sh (stage 1) first." >&2
+    echo "ERROR: $CKPT not found -- run 'distill_loop_top.sh top_medium_a00_b10' (stage 1) first." >&2
     exit 1
 fi
 

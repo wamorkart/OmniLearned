@@ -35,11 +35,12 @@ LOG_DIR=/pscratch/sd/t/twamorka/omnilearned/logs/distill_queue_top_deepsets_mlp_
 mkdir -p "$LOG_DIR"
 
 # "loop_script[:CONFIG]" -- CONFIG (if present) is exported for the loop script.
-# The deepsets a00_b10 run is now a config of the consolidated
-# distill_loop_top_deepsets.sh (see EXPERIMENTS_deepsets_kd.md).
+# Both runs are now configs of consolidated loop drivers: deepsets a00_b10 via
+# distill_loop_top_deepsets.sh (see EXPERIMENTS_deepsets_kd.md), mlp a00_b10 via
+# distill_loop_top.sh + configs/train/top_mlp_a00_b10.sh.
 QUEUE=(
     "distill_loop_top_deepsets.sh:a00_b10"
-    "distill_loop_top_mlp_a00_b10.sh"
+    "distill_loop_top.sh:top_mlp_a00_b10"
 )
 MAX_CONCURRENT=2
 MAX_SUBMIT_PER_USER=2
