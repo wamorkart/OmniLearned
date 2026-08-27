@@ -2,7 +2,8 @@
 # Continuous training loop for the atlas_flav ftag fine-tune
 # (fine_tune_atlas_flav_m), 4 nodes x 4 GPUs on the Perlmutter interactive
 # queue. Keeps resubmitting salloc jobs until training finishes (exit 0) or
-# MAX_LOOPS is hit. Modeled on distill_loop_top_deepsets.sh.
+# MAX_LOOPS is hit. Same salloc-resubmit pattern as lib/resubmit_loop.sh
+# (kept standalone here; the atlas_flav family is not yet on run_train.sh).
 #
 # Run inside a screen session so the loop survives terminal disconnects:
 #   screen -dmS train_atlas_flav_ftag_m bash train_loop_atlas_flav_ftag_m.sh

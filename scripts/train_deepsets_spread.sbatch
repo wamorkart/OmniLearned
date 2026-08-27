@@ -11,12 +11,13 @@
 #              train_top_deepsets_small_ce_scratch_r2 (CE) or
 #              distill_top_deepsets_small_scratch_teachS_a05_T4_r3 (teachS)
 #   CONFIG   : "ce" or "teachs" -- selects the CE-only vs small-teacher-KD
-#              omnilearned train command. Mirrors the "ce" / "teachS" configs
-#              of distill_train_top_deepsets.sh, but inlines the command
-#              rather than calling that script: its `module load conda`
-#              env-activation doesn't reliably work under non-interactive
-#              sbatch shells -- PATH-prepend is the proven sbatch pattern in
-#              this repo, see train_atlas_flav_ftag_m.sbatch).
+#              omnilearned train command. Same recipes as the
+#              configs/train/top_deepsets_{ce,teachS}.sh run_train.sh configs,
+#              but inlines the command rather than going through run_train.sh:
+#              the interactive `module load conda` env-activation doesn't
+#              reliably work under non-interactive sbatch shells -- PATH-prepend
+#              is the proven sbatch pattern in this repo, see
+#              train_atlas_flav_ftag_m.sbatch).
 #
 # `--resuming` means an already-partially-trained tag (e.g. r2, which had
 # reached epoch 27/50 under the old interactive queue manager before it was

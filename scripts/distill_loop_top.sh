@@ -10,9 +10,10 @@
 # LOOP_LOG_DIR / MAX_LOOPS env vars), then hands off.
 #
 # Replaces the old one-per-config shims distill_loop_top{,_medium,
-# _medium_a05_b05_T4,_micro,_mlp,_mlp_a00_b10,_small_via_medium}.sh. The
-# arg-taking variants (_rep, _micro_rep, _micro_noint_rep, _sweep) are still
-# their own scripts.
+# _medium_a05_b05_T4,_micro,_mlp,_mlp_a00_b10,_small_via_medium}.sh and
+# distill_loop_top_deepsets.sh (its CONFIG=<name> now maps to the
+# top_deepsets_<name> configs). The arg-taking variants (_rep, _micro_rep,
+# _micro_noint_rep, _sweep) are still their own scripts.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -30,6 +31,12 @@ declare -A LOOP_CFG=(
     [top_mlp_a05]="$LOG_BASE/distill_loop_top_mlp|8"
     [top_mlp_a00_b10]="$LOG_BASE/distill_loop_top_mlp_a00_b10|8"
     [top_deepsets_a05]="$LOG_BASE/distill_loop_top_deepsets|8"
+    [top_deepsets_a00_b10]="$LOG_BASE/distill_loop_top_deepsets_a00_b10|8"
+    [top_deepsets_wd005]="$LOG_BASE/distill_loop_top_deepsets_wd005|8"
+    [top_deepsets_ewpool]="$LOG_BASE/distill_loop_top_deepsets_ewpool|8"
+    [top_deepsets_distillnet]="$LOG_BASE/distill_loop_top_deepsets_distillnet|8"
+    [top_deepsets_teachS]="$LOG_BASE/distill_loop_top_deepsets_teachS|8"
+    [top_deepsets_ce]="$LOG_BASE/distill_loop_top_deepsets_ce|8"
     [top_medium_a00_b10]="$SWEEP/distill_top_medium_scratch_a00_b10_T4|50"
     [top_medium_a05_b05]="$SWEEP/distill_top_medium_scratch_a05_b05_T4|50"
     [top_small_via_medium_a00_b10]="$SWEEP/distill_top_small_via_medium_a00_b10_T4|50"

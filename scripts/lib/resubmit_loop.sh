@@ -16,8 +16,8 @@
 # Note: unlike the old per-experiment loops this does NOT set `-e`. Those
 # aborted on the first non-zero salloc (with `pipefail` the `| tee` pipeline
 # failed before the resubmit check), so resubmit-on-timeout never actually
-# fired; distill_loop_top_deepsets.sh worked around it with `set +e`. Dropping
-# `-e` here makes every loop behave like that fixed one.
+# fired; the old distill_loop_top_deepsets.sh worked around it with `set +e`.
+# Dropping `-e` here makes every loop behave like that fixed one.
 set -uo pipefail
 
 LOOP_LOG_DIR="${LOOP_LOG_DIR:?LOOP_LOG_DIR required}"

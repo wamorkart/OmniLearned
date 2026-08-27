@@ -1,9 +1,14 @@
 # DeepSets top-tagging KD ablation — experiment log
 
-Rationale and history for each `CONFIG` of `distill_train_top_deepsets.sh`
-(+ `distill_loop_top_deepsets.sh` to run it, `run_eval_deepsets.sh` to
-evaluate). Consolidated 2026-08-27 from the per-script comment blocks of
-~26 near-duplicate launcher scripts.
+Rationale and history for each DeepSets-KD config under
+`scripts/configs/train/top_deepsets_*.sh`, run via
+`scripts/distill_loop_top.sh top_deepsets_<name>` (or `run_train.sh` for a
+single session) and evaluated with `run_eval_deepsets.sh`. Consolidated
+2026-08-27 from the per-script comment blocks of ~26 near-duplicate launcher
+scripts; the `distill_train_top_deepsets.sh` / `distill_loop_top_deepsets.sh`
+`CONFIG=` table was folded into the shared `run_train.sh` config path on the
+same day (the config sections below keep their old `CONFIG` names as
+`top_deepsets_<name>`).
 
 Student: DeepSets / PFN (Phi-embed → pooled → rho-MLP, no attention), random
 init ("scratch" in the tags = random-init *student*, not "no teacher").
@@ -35,11 +40,14 @@ NCCL communicator, and that fork corrupts NCCL state.
 Never fixed in code. `train.py` writes `epoch_log_<tag>.csv` every epoch
 regardless of wandb, so a hang costs a restart, not progress.
 
-Configs `a00_b10`, `ewpool`, `teachS`, `ce` default `WANDB=1` (enabled at
-user request; the a00_b10_wandb and ewpool runs both completed 50 epochs
-cleanly). Configs `a05`, `wd005`, `distillnet` default `WANDB=0`. Override
-either way with `WANDB=0/1`. Symptom to watch for: a mid-epoch stall with no
-heartbeat.
+All `top_deepsets_*` configs now inherit `WANDB=1` from
+`configs/train/_defaults.sh` (the always-use-wandb policy, 2026-08-25,
+retired the earlier per-config `WANDB=0` caution for `a05`/`wd005`/
+`distillnet`; the a00_b10 and ewpool runs had already completed 50 epochs
+cleanly with wandb on). Set `WANDB=0` in a config to opt out. Symptom to
+watch for if a hang recurs: a mid-epoch stall with no heartbeat — `train.py`
+writes `epoch_log_<tag>.csv` every epoch regardless, so it costs a restart,
+not progress.
 
 ## Configs
 
@@ -112,7 +120,7 @@ No `--seed` flag exists in the CLI, so a fresh `SAVE_TAG` + a fresh process =
 a true independent replicate (fresh random init + shuffle order from system
 entropy). Run any config as a replicate with:
 
-    SAVE_TAG=<tag>_r2 CONFIG=<name> bash scripts/distill_loop_top_deepsets.sh
+    SAVE_TAG=<tag>_r2 bash scripts/distill_loop_top.sh top_deepsets_<name>
 
 ## Results summary
 

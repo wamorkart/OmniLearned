@@ -154,6 +154,15 @@ The per-config `distill_loop_top_*.sh` shims are gone, folded into
 entries now name `distill_loop_top.sh:<config>`. `configs/train/` each note
 which old script they replace.
 
+**DeepSets / MLP students** are just `ARCH=` configs of the same
+`run_train.sh`: `configs/train/top_{deepsets,mlp}_*.sh` set `ARCH=deep-sets`
+/ `ARCH=mlp` with the interaction flags off. The old
+`distill_train_top_deepsets.sh` + `distill_loop_top_deepsets.sh` `CONFIG=`
+table is gone — its `CONFIG=<name>` is now
+`distill_loop_top.sh top_deepsets_<name>`. For a non-default DeepSets width
+(`nano|distillnet|micro|tiny|small|medium|large`), copy a `top_deepsets_*`
+config and set `SIZE` (replaces the old `SIZE_OVERRIDE` env knob).
+
 ## Config-driven eval (`run_eval.sh` + `configs/eval/`)
 
 Same shape for `omnilearned evaluate`: `run_eval.sh <config> [--dry-run]`
@@ -174,8 +183,7 @@ teacher dumps), `evaluate_metrics_top_{,T_}sweep.sh` (multi-tag metrics
 tables), `evaluate_top_distill_deepsets.sh` + `run_eval_deepsets.sh`,
 `evaluate_top_for_distill.sh`, `evaluate_train.sh`, `evaluate.sh`.
 
-Not yet migrated: `distill_train_top_deepsets.sh` (already config-driven via
-its own `CONFIG` table), `distill_loop_top_T_sweep*.sh`, the JetClass/pretrain
+Not yet migrated: `distill_loop_top_T_sweep*.sh`, the JetClass/pretrain
 `distill_{train,loop}_{jetclass,pretrain}*.sh` families, and the cosmology
 `fine_tune_{camels,quijote}.sh` / `fine_tune_qg_pretrain_l.sh` outliers.
 
@@ -197,8 +205,8 @@ symlink to it. This keeps both reference styles working:
 
 ## Notable entry points
 
-- `distill_train_top_deepsets.sh` / `distill_loop_top_deepsets.sh` /
-  `run_eval_deepsets.sh` — config-driven DeepSets-KD family
+- `configs/train/top_deepsets_*.sh` + `distill_loop_top.sh` /
+  `run_eval_deepsets.sh` — DeepSets-KD family
   (see `../EXPERIMENTS_deepsets_kd.md`)
 - `run_all_chunks.sh` / `submit_datasets.sh` — chunked teacher-logit generation
 - `train_omnifold_pythia_herwig.sh` / `distill_loop_omnifold.sh` — OmniFold unfolding
