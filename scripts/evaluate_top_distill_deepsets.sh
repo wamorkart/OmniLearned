@@ -9,7 +9,7 @@
 #
 # Run inside an salloc GPU interactive job, e.g.:
 #   salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 \
-#          --gpus-per-node 4 -A m3246 bash evaluate_top_distill_deepsets.sh
+#          --gpus-per-node 4 -A m3246 bash scripts/evaluate_top_distill_deepsets.sh
 
 module load conda
 conda activate /global/homes/t/twamorka/omnilearned-clean/env

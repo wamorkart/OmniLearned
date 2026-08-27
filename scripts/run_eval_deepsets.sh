@@ -8,7 +8,7 @@
 #   size defaults to "small"; pass "distillnet" for the 10,981-param student.
 #
 # Run inside a screen session so it survives a disconnect:
-#   screen -dmS eval_deepsets bash run_eval_deepsets.sh <save_tag> [size]
+#   screen -dmS eval_deepsets bash scripts/run_eval_deepsets.sh <save_tag> [size]
 #
 # After it finishes, score it the same way every DeepSets run was scored:
 #   /global/homes/t/twamorka/omnilearned-clean/env/bin/python compute_metrics_top.py \

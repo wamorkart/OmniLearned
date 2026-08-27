@@ -2,7 +2,7 @@
 # Distill a fine-tuned top-tagging teacher -> DeepSets/PFN student on top
 # tagging. Config-driven: one script for every DeepSets-KD ablation run.
 #
-#   CONFIG=<name> bash distill_train_top_deepsets.sh
+#   CONFIG=<name> bash scripts/distill_train_top_deepsets.sh
 #
 # CONFIG selects a row from the table below (default: a05). Override the
 # checkpoint tag with SAVE_TAG=... for independent-seed replicate runs (no
@@ -27,7 +27,7 @@
 #
 # Run inside an salloc GPU interactive job, e.g.:
 #   salloc -C gpu -q interactive -t 240 --nodes 4 --ntasks-per-node 4 \
-#          --gpus-per-node 4 -A m3246 bash distill_train_top_deepsets.sh
+#          --gpus-per-node 4 -A m3246 bash scripts/distill_train_top_deepsets.sh
 # For a walltime-surviving resubmit loop use distill_loop_top_deepsets.sh.
 
 set -euo pipefail

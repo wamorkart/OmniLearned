@@ -26,7 +26,7 @@
 # so a launch is only attempted once it can actually succeed.
 #
 # Run inside a screen/tmux session so it survives disconnects:
-#   screen -S deepsets_mlp_a00_b10 bash distill_queue_top_deepsets_mlp_a00_b10.sh
+#   screen -S deepsets_mlp_a00_b10 bash scripts/distill_queue_top_deepsets_mlp_a00_b10.sh
 
 set -uo pipefail
 

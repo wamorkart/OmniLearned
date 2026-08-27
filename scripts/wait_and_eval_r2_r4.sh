@@ -35,14 +35,14 @@ done
 
 log "=== Evaluating r2 ==="
 salloc -C gpu -q interactive -t 60 --nodes 4 --ntasks-per-node 4 --gpus-per-node 4 -A m3246 \
-    bash -c "SAVE_TAG=distill_top_micro_noint_scratch_a05_T4_r2 bash evaluate_top_distill_micro_noint.sh" \
+    bash -c "SAVE_TAG=distill_top_micro_noint_scratch_a05_T4_r2 bash scripts/evaluate_top_distill_micro_noint.sh" \
     >> "$OUT" 2>&1
 R2_EVAL_EXIT=$?
 log "r2 eval exit code: $R2_EVAL_EXIT"
 
 log "=== Evaluating r4 ==="
 salloc -C gpu -q interactive -t 60 --nodes 4 --ntasks-per-node 4 --gpus-per-node 4 -A m3246 \
-    bash -c "SAVE_TAG=distill_top_micro_noint_scratch_a05_T4_r4 bash evaluate_top_distill_micro_noint.sh" \
+    bash -c "SAVE_TAG=distill_top_micro_noint_scratch_a05_T4_r4 bash scripts/evaluate_top_distill_micro_noint.sh" \
     >> "$OUT" 2>&1
 R4_EVAL_EXIT=$?
 log "r4 eval exit code: $R4_EVAL_EXIT"

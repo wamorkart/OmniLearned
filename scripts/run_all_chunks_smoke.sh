@@ -31,7 +31,7 @@
 set -euo pipefail
 trap 'ec=$?; echo "ERROR: $BASH_SOURCE line $LINENO exited with $ec: $BASH_COMMAND" >&2' ERR
 
-PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT"
 
 count_glob() { local n; n=$(ls $1 2>/dev/null | wc -l) || n=0; echo "$n"; }
@@ -48,7 +48,7 @@ NUM_CHUNKS=1000 \
 RUN_CHUNKS="0 1" \
 TIME=30 \
 OUTPUT_DIR="$SMOKE_OUTPUT_DIR" \
-bash run_all_chunks.sh
+bash scripts/run_all_chunks.sh
 
 echo ""
 echo "=== Smoke: post-run check ==="

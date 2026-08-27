@@ -5,7 +5,7 @@
 # each session picks up where the last left off.
 #
 #   CONFIG=<name> [SAVE_TAG=...] [MAX_LOOPS=N] \
-#     screen -dmS distill_deepsets_<name> bash distill_loop_top_deepsets.sh
+#     screen -dmS distill_deepsets_<name> bash scripts/distill_loop_top_deepsets.sh
 #   screen -r distill_deepsets_<name>   # to reattach
 #
 # CONFIG is passed straight through to distill_train_top_deepsets.sh (see its

@@ -18,7 +18,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 
 LOG_DIR=/pscratch/sd/t/twamorka/omnilearned/logs/train_top_micro_ce
 RESULTS_DIR=/pscratch/sd/t/twamorka/omnilearned/results
@@ -85,7 +85,7 @@ log "=== Stage 3: computing metrics and comparison table ==="
 module load conda
 conda activate /global/homes/t/twamorka/omnilearned-clean/env
 
-python "$SCRIPT_DIR/compare_micro_ce_vs_kd.py" | tee "$RESULTS_DIR/micro_ce_vs_kd.txt"
+python "$SCRIPT_DIR/../compare_micro_ce_vs_kd.py" | tee "$RESULTS_DIR/micro_ce_vs_kd.txt"
 
 log "=== Stage 3 done. Results: $RESULTS_DIR/micro_ce_vs_kd.txt ==="
 log "=== STUDY COMPLETE ==="

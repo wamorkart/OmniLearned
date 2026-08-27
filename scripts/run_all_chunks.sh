@@ -17,7 +17,7 @@
 set -euo pipefail
 trap 'ec=$?; echo "ERROR: $BASH_SOURCE line $LINENO exited with $ec: $BASH_COMMAND" >&2' ERR
 
-PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT"
 
 # Count files matching a glob, robust to no-match (returns "0").
@@ -125,7 +125,7 @@ for K in "${REMAINING[@]}"; do
         --ntasks-per-node="$TASKS_PER_NODE" \
         --gpus-per-node="$GPUS_PER_NODE" \
         -A "$ACCOUNT" \
-        bash -c "cd $PROJECT && NUM_CHUNKS=$NUM_CHUNKS DATASET_TYPE=$DATASET_TYPE OUTPUT_DIR=$OUTPUT_DIR SAVE_TAG=$SAVE_TAG DATASET=$DATASET bash evaluate_chunk.sh $K" \
+        bash -c "cd $PROJECT && NUM_CHUNKS=$NUM_CHUNKS DATASET_TYPE=$DATASET_TYPE OUTPUT_DIR=$OUTPUT_DIR SAVE_TAG=$SAVE_TAG DATASET=$DATASET bash scripts/evaluate_chunk.sh $K" \
         || echo "WARNING: chunk $K exited non-zero (salloc rc=$?). Continuing to next chunk."
 
     echo ""

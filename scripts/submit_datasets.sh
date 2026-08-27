@@ -18,7 +18,7 @@
 #   EVAL_AMP=bf16 bash submit_datasets.sh    # after the bf16 A/B passes
 set -euo pipefail
 
-PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT"
 PYBIN=/global/homes/t/twamorka/omnilearned-clean/env/bin/python
 
@@ -117,7 +117,7 @@ submit_prep() {  # $1=dataset -> echoes jobid (cached in PREP_JOB)
         jid=$(sbatch --parsable -J "idx_$ds" -t 00:40:00 \
                 -o "$OUTPUT_DIR/prep_${ds}.log" \
                 --export=ALL,DATASET="$ds",DATA_PATH="$DATA_PATH" \
-                prep_index.sbatch)
+                scripts/prep_index.sbatch)
     fi
     PREP_JOB[$ds]=$jid
     echo "$jid"
@@ -169,7 +169,7 @@ for ds in $DATASETS; do
                     -A "$ACCOUNT" -q "$QOS" --nodes="$NODES" -t "$wall" $dep \
                     -o "$OUTPUT_DIR/${ds}_${sp}_chunk${K}of${nc}.log" \
                     --export="$export_vars" \
-                    evaluate_batch.sbatch >/dev/null \
+                    scripts/evaluate_batch.sbatch >/dev/null \
                     && echo "    submitted chunk $K  (-t $wall ${dep:+$dep})"
             fi
         done

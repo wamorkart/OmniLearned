@@ -112,7 +112,7 @@ No `--seed` flag exists in the CLI, so a fresh `SAVE_TAG` + a fresh process =
 a true independent replicate (fresh random init + shuffle order from system
 entropy). Run any config as a replicate with:
 
-    SAVE_TAG=<tag>_r2 CONFIG=<name> bash distill_loop_top_deepsets.sh
+    SAVE_TAG=<tag>_r2 CONFIG=<name> bash scripts/distill_loop_top_deepsets.sh
 
 ## Results summary
 
