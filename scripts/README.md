@@ -104,6 +104,43 @@ To train a *different* config, swap `top_small_a05` for any name under
 `_defaults.sh` overrides, and each file's header comment names the old
 per-experiment script it replaced.
 
+### Customizing a run
+
+Every knob is a shell variable. `run_train.sh` sources `_defaults.sh`, then
+your **one** named config (configs don't chain — a new config inherits from
+`_defaults.sh` only, so copy whatever deltas you need), then assembles the
+CLI. `--dry-run` to see the result.
+
+**Change a value** (lr, wd, batch, epoch, size, …) — set it in a config.
+Prefer a new config over editing an existing one:
+
+```
+# scripts/configs/train/top_small_a05_lr1e4.sh
+LR=1e-4
+EXTRA_FLAGS="--warmup-epoch 1"
+SAVE_TAG=distill_top_small_scratch_a05_T4_lr1e4_warmup
+```
+
+Variables `run_train.sh` reads: `LR WD BATCH ITERATIONS EPOCH SIZE ARCH
+NUM_WORKERS INTERACTION LOCAL_INTERACTION WANDB DISTILL ALPHA BETA DISTILL_T
+TEACHER_TAG TEACHER_DIR OUTDIR DATASET MODE NUM_CLASSES`.
+
+**Add a flag that has no variable** — `EXTRA_FLAGS` is appended verbatim:
+`EXTRA_FLAGS="--feature-drop 0.1 --lr-factor 5 --optim lion"`.
+
+**Remove a flag** — toggle its variable: `INTERACTION=0`,
+`LOCAL_INTERACTION=0`, `WANDB=0`, `DISTILL=0` (drops `--distill` and every
+`--teacher-*`/`--distill-*` arg), `ARCH=` (empty → PET2 default, no
+`--arch`). The always-on flags (`--resuming`, `--path`, `--mode`,
+`--num-classes`) need an edit to `run_train.sh` itself.
+
+**Override at call time** — only `SAVE_TAG ALPHA BETA DISTILL_T` (the
+replicate/sweep whitelist): `SAVE_TAG=..._r2 scripts/run_train.sh
+top_small_a05`. Anything else must live in a config.
+
+`configs/eval/` + `run_eval.sh` work the same way; its call-time whitelist
+is `SAVE_TAG DATASET_TYPE OUTDIR`.
+
 The per-config `distill_loop_top_*.sh` shims are gone, folded into
 `distill_loop_top.sh <config>`. Still their own scripts: the arg-taking
 `distill_loop_top_{rep,micro_rep,micro_noint_rep,sweep}.sh`. `distill_queue_*`
