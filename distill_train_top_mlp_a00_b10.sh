@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pure-KD variant of distill_train_top_mlp.sh: alpha=0, beta=1 instead of
-# alpha=0.5/beta=0.5 -- see distill_train_top_deepsets_a00_b10.sh for the
-# rationale (matches DistillNet's pure teacher-transfer loss and this
+# alpha=0.5/beta=0.5 -- see EXPERIMENTS_deepsets_kd.md (a00_b10 config) for
+# the rationale (matches DistillNet's pure teacher-transfer loss and this
 # project's own T-sweep winner for the PET2 student).
 #
 # Also serves as an A/B check on the MLP student's near-random eval result

@@ -34,9 +34,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR=/pscratch/sd/t/twamorka/omnilearned/logs/distill_queue_top_deepsets_mlp_a00_b10
 mkdir -p "$LOG_DIR"
 
+# "loop_script[:CONFIG]" -- CONFIG (if present) is exported for the loop script.
+# The deepsets a00_b10 run is now a config of the consolidated
+# distill_loop_top_deepsets.sh (see EXPERIMENTS_deepsets_kd.md).
 QUEUE=(
-    distill_loop_top_deepsets_a00_b10.sh
-    distill_loop_top_mlp_a00_b10.sh
+    "distill_loop_top_deepsets.sh:a00_b10"
+    "distill_loop_top_mlp_a00_b10.sh"
 )
 MAX_CONCURRENT=2
 MAX_SUBMIT_PER_USER=2
@@ -67,12 +70,14 @@ launch_next() {
     if [ "$QUEUE_IDX" -ge "${#QUEUE[@]}" ]; then
         return 1
     fi
-    SCRIPT="${QUEUE[$QUEUE_IDX]}"
+    ENTRY="${QUEUE[$QUEUE_IDX]}"
+    SCRIPT="${ENTRY%%:*}"
+    CONFIG="${ENTRY#*:}"; [ "$CONFIG" = "$ENTRY" ] && CONFIG=""
     QUEUE_IDX=$((QUEUE_IDX + 1))
     wait_for_slot
-    log "Launching ${SCRIPT}"
-    bash "$SCRIPT_DIR/${SCRIPT}" \
-        > "$LOG_DIR/${SCRIPT%.sh}_loop.out" 2>&1 &
+    log "Launching ${SCRIPT}${CONFIG:+ (CONFIG=$CONFIG)}"
+    CONFIG="$CONFIG" bash "$SCRIPT_DIR/${SCRIPT}" \
+        > "$LOG_DIR/${SCRIPT%.sh}${CONFIG:+_$CONFIG}_loop.out" 2>&1 &
     PID_TO_SCRIPT[$!]="$SCRIPT"
     # Give the just-launched loop script's salloc call time to actually
     # register in squeue before the next launch_next's wait_for_slot checks

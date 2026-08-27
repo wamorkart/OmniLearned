@@ -1,45 +1,43 @@
 #!/bin/bash
-# Continuous training loop for the DeepSets top-tagging KD student
-# (distill_top_deepsets_small_scratch_a05_T4_archfix0804), 4 nodes x 4 GPUs
-# on the Perlmutter interactive queue. Keeps resubmitting salloc jobs until
-# training finishes (exit 0) or MAX_LOOPS is hit.
+# Continuous training loop for a DeepSets top-tagging KD run. Keeps
+# resubmitting 4-node x 4-GPU interactive salloc jobs until training exits 0
+# or MAX_LOOPS is hit. distill_train_top_deepsets.sh runs with --resuming, so
+# each session picks up where the last left off.
 #
-# Run inside a screen session so the loop survives terminal disconnects:
-#   screen -dmS distill_deepsets bash distill_loop_top_deepsets.sh
-#   screen -r distill_deepsets   # to reattach
+#   CONFIG=<name> [SAVE_TAG=...] [MAX_LOOPS=N] \
+#     screen -dmS distill_deepsets_<name> bash distill_loop_top_deepsets.sh
+#   screen -r distill_deepsets_<name>   # to reattach
 #
-# Each salloc grabs 4 nodes x 4 GPUs for 4 hours (Perlmutter interactive
-# queue max walltime). distill_train_top_deepsets.sh runs with --resuming,
-# so each new session picks the checkpoint back up where the last one left
-# off. When an allocation expires or crashes (non-zero exit), the loop
-# resubmits after a short pause; when training finishes all epochs (exit 0),
-# it stops.
+# CONFIG is passed straight through to distill_train_top_deepsets.sh (see its
+# header for the table; default a05). SAVE_TAG overrides the checkpoint tag
+# for replicate runs. Always launch inside screen so the loop survives a
+# disconnect.
 #
-# The mislabeled prior run (see NOTE in distill_train_top_deepsets.sh) did
-# --epoch 50 in ~2h46m on the same 4-node/16-GPU shape, well inside one
-# 240-min salloc. MAX_LOOPS below has generous margin for preemption/crash
-# restarts, not because one session is expected to be insufficient.
-#
-# CAUTION: a prior 16-node pretrain run's outer resubmit loop silently died
-# after an NCCL crash (no surviving tmux/screen session) and went unnoticed
-# for weeks (see distill-lazy-teacher-progress memory). Check summary.log
-# periodically (or `screen -r distill_deepsets`) to confirm the loop is
-# still alive, not just that a job is queued/running.
+# CAUTION: a prior outer resubmit loop silently died after an NCCL crash with
+# no surviving screen session and went unnoticed for weeks (see
+# distill-lazy-teacher-progress memory). Check summary.log (or reattach)
+# periodically to confirm the loop itself is alive, not just that a job is
+# queued.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_DIR=/pscratch/sd/t/twamorka/omnilearned/logs/distill_loop_top_deepsets
+CONFIG="${CONFIG:-${1:-a05}}"
+export CONFIG
+[ -n "${SAVE_TAG:-}" ] && export SAVE_TAG
+
+LABEL="${SAVE_TAG:-$CONFIG}"
+LOG_DIR=/pscratch/sd/t/twamorka/omnilearned/logs/distill_loop_top_deepsets_$LABEL
 mkdir -p "$LOG_DIR"
 
-MAX_LOOPS=8
+MAX_LOOPS="${MAX_LOOPS:-8}"
 LOOP=0
 
 while [ "$LOOP" -lt "$MAX_LOOPS" ]; do
     LOOP=$((LOOP + 1))
     TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
     LOG_FILE="$LOG_DIR/session_${LOOP}_${TIMESTAMP}.out"
-    echo "[${TIMESTAMP}] === Session ${LOOP} / ${MAX_LOOPS} ===" | tee -a "$LOG_DIR/summary.log"
+    echo "[${TIMESTAMP}] === $LABEL Session ${LOOP} / ${MAX_LOOPS} ===" | tee -a "$LOG_DIR/summary.log"
 
     set +e
     salloc \
@@ -55,7 +53,7 @@ while [ "$LOOP" -lt "$MAX_LOOPS" ]; do
     EXIT="${PIPESTATUS[0]}"
     set -e
 
-    MSG="[$(date '+%Y-%m-%d %H:%M:%S')] Session ${LOOP} exited with code ${EXIT}"
+    MSG="[$(date '+%Y-%m-%d %H:%M:%S')] $LABEL Session ${LOOP} exited with code ${EXIT}"
     echo "$MSG" | tee -a "$LOG_DIR/summary.log"
 
     if [ "$EXIT" -eq 0 ]; then
