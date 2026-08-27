@@ -2,7 +2,7 @@
 # Continuous loop for fine-tuning the KD-pretrained small student on top tagging.
 # Wraps fine_tune_top_distill_pretrain.sh with salloc auto-resubmit on timeout.
 #
-# Run in a screen session (launched by watch_phase2.sh, or manually):
+# Run in a screen session:
 #   screen -S top_ft_pretrain bash distill_loop_top_pretrain_finetune.sh
 
 set -euo pipefail

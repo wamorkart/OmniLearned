@@ -2,7 +2,7 @@
 # Continuous loop for JetClass distillation with α=0, β=1 (pure KD from pretrain_l).
 # Each salloc grabs 4 nodes × 4 GPUs for 4 hours; resubmits on timeout.
 #
-# Run in a screen session (launched by watch_phase2.sh, or manually):
+# Run in a screen session:
 #   screen -S jc_a00 bash distill_loop_jetclass_a00.sh
 
 set -euo pipefail

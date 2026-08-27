@@ -155,8 +155,9 @@ fine-tuned on top tagging — directly on the top-tagging task itself (same-task
   result in the whole project. At micro scale, CE-only training is genuinely
   capacity-limited (worse than even the small CE-only baseline).
 - **No-interaction ablation** (drops the pairwise interaction matrix, 5 reps): launched
-  2026-07-21, completion status not confirmed in memory — check
-  `distill_status_top_micro_noint_reps.sh` if needed for the write-up.
+  2026-07-21, completion status not confirmed in memory — check the
+  `distill_top_micro_noint_scratch_a05_T4_r*` checkpoints / eval outputs
+  directly if needed for the write-up.
 
 Full reference table (top tagging, 404k test events):
 
