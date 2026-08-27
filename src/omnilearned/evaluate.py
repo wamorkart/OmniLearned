@@ -231,6 +231,7 @@ def run(
     num_chunks: int = 1,
     chunk_idx: int = 0,
     arch: str = "pet2",
+    energy_weighted_pool: bool = False,
 ):
     local_rank, rank, size = ddp_setup()
 
@@ -265,6 +266,7 @@ def run(
             conditional=conditional,
             cond_dim=num_cond,
             mode=mode,
+            energy_weighted_pool=energy_weighted_pool,
             **ds_params,
         )
     elif arch == "mlp":

@@ -96,8 +96,17 @@ def collate_point_cloud(batch, max_part=5000):
     else:
         result["teacher_logits"] = None
 
+    # teacher_cls_embed is present only when a teacher labels file with a
+    # `teacher_cls_embed` dataset was loaded (CLS-MSE feature distillation).
+    if all(item.get("teacher_cls_embed") is not None for item in batch):
+        result["teacher_cls_embed"] = torch.stack(
+            [item["teacher_cls_embed"] for item in batch]
+        )
+    else:
+        result["teacher_cls_embed"] = None
+
     # Handle optional fields in a loop to reduce code duplication
-    optional_fields = ["cond", "pid", "add_info", "data_pid", "vertex_pid"]
+    optional_fields = ["cond", "pid", "add_info", "data_pid", "vertex_pid", "weight"]
     for field in optional_fields:
         if all(field in item for item in batch):
             stacked = torch.stack([item[field] for item in batch])
@@ -301,6 +310,28 @@ class HEPDataset(Dataset):
         else:
             sample["teacher_logits"] = None
 
+        if "teacher_cls_embed" in f:
+            # Merged file: cls_embed lives alongside `data`/`pid`, no second
+            # file open needed.
+            sample["teacher_cls_embed"] = torch.from_numpy(
+                f["teacher_cls_embed"][sample_idx].astype(np.float32)
+            )
+        elif (
+            self.teacher_file_paths is not None
+            and self.teacher_file_paths[file_idx] is not None
+        ):
+            tf = self._get_teacher_file(file_idx)
+            # Opt-in field (build_teacher_h5.py --include-cls-embed): older
+            # companion files built without it simply won't have this key.
+            if "teacher_cls_embed" in tf:
+                sample["teacher_cls_embed"] = torch.from_numpy(
+                    tf["teacher_cls_embed"][sample_idx].astype(np.float32)
+                )
+            else:
+                sample["teacher_cls_embed"] = None
+        else:
+            sample["teacher_cls_embed"] = None
+
         return sample
 
     def __del__(self):
@@ -362,6 +393,7 @@ def load_data(
         "aspen_bsm_ad_sb",
         "aspen_bsm_ad_sr",
         "aspen_bsm_ad_sr_hl",
+        "collide",
     ]
     if dataset_name not in supported_datasets:
         raise ValueError(

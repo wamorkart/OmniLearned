@@ -61,8 +61,37 @@ def get_model_parameters(model_size):
 
 
 def get_deepsets_parameters(model_size):
-    """Architecture params for DeepSets (φ depth, ρ depth, hidden dim)."""
-    if model_size == "small":
+    """Architecture params for DeepSets (φ depth, ρ depth, hidden dim).
+
+    Params scale as roughly 16*base_dim^2 (every block is a
+    base_dim -> mlp_ratio*base_dim -> base_dim sandwich, and small/medium/large
+    use 5/7/9 such blocks).
+
+    The small/medium/large ladder was inherited from the PET2 transformer size
+    ladder, NOT chosen against an FPGA resource budget -- "small" is 298,887
+    params, ~28x the ~10.5k of the DistillNet student (arXiv:2311.12551) and
+    ~75x the classic hls4ml jet tagger. The four sizes below fill in that gap:
+
+        nano       base_dim=16  phi=3 rho=2 ->    5,111 params
+        distillnet base_dim=32  phi=2 rho=1 ->   10,981 params  (~DistillNet parity)
+        micro      base_dim=32  phi=3 rho=2 ->   19,431 params
+        tiny       base_dim=64  phi=3 rho=2 ->   75,719 params
+        small      base_dim=128 phi=3 rho=2 ->  298,887 params  (unchanged)
+
+    nano/micro/tiny/small vary ONLY base_dim at fixed depth, so they form a
+    clean width-only accuracy-vs-params curve. `distillnet` additionally drops
+    depth to match the reference paper's shape and is the odd one out -- do not
+    put it on the width curve.
+    """
+    if model_size == "nano":
+        return {"base_dim": 16, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "distillnet":
+        return {"base_dim": 32, "num_phi_layers": 2, "num_rho_layers": 1}
+    elif model_size == "micro":
+        return {"base_dim": 32, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "tiny":
+        return {"base_dim": 64, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "small":
         return {"base_dim": 128, "num_phi_layers": 3, "num_rho_layers": 2}
     elif model_size == "medium":
         return {"base_dim": 256, "num_phi_layers": 4, "num_rho_layers": 3}
@@ -259,6 +288,7 @@ def get_loss(
     clip_loss,
     logs,
     data_pid=None,
+    sample_weight=None,
 ):
     loss = 0.0
     if outputs["y_pred"] is not None:
@@ -266,10 +296,15 @@ def get_loss(
             loss_class = torch.mean(class_cost(outputs["y_pred"], y))
             logs["loss_class"] += loss_class.detach()
         else:
-            counts = torch.bincount(y, minlength=outputs["y_pred"].shape[-1]).float()
-            class_weights = 1.0 / (counts + 1e-6)
-            weights = class_weights[y]
-            weights = weights / weights.mean()
+            if sample_weight is not None:
+                weights = sample_weight
+            else:
+                counts = torch.bincount(
+                    y, minlength=outputs["y_pred"].shape[-1]
+                ).float()
+                class_weights = 1.0 / (counts + 1e-6)
+                weights = class_weights[y]
+                weights = weights / weights.mean()
 
             loss_class = get_class_loss(
                 weights, outputs["y_pred"], y, class_cost, use_event_loss, logs
@@ -338,6 +373,14 @@ def get_distill_loss(student_logits, teacher_logits, distill_T=4.0):
     )
 
 
+def get_distill_cls_loss(student_embed, teacher_embed, projector):
+    """MSE between the teacher's pre-saved flattened body-token embedding and
+    the student's own (live) flattened body-token embedding, projected up to
+    the teacher's dim. `projector` is the student model's own `cls_projector`
+    submodule (trained jointly, dropped at inference)."""
+    return F.mse_loss(projector(student_embed), teacher_embed)
+
+
 def save_checkpoint(
     model,
     ema_model,
@@ -367,6 +410,10 @@ def save_checkpoint(
 
     if model.module.generator is not None:
         save_dict["generator_head"] = model.module.generator.state_dict()
+
+    if hasattr(model.module, "cls_projector"):
+        save_dict["cls_projector"] = model.module.cls_projector.state_dict()
+
     if ema_model is not None:
         save_dict["ema_body"] = ema_model.body.state_dict()
         if model.module.generator is not None:
@@ -434,6 +481,11 @@ def restore_checkpoint(
                 checkpoint[generator_name], strict=True
             )
 
+        if hasattr(base_model, "cls_projector") and "cls_projector" in checkpoint:
+            base_model.cls_projector.load_state_dict(
+                checkpoint["cls_projector"], strict=True
+            )
+
         if lr_scheduler is not None:
             lr_scheduler.load_state_dict(checkpoint["sched"])
         startEpoch = checkpoint["epoch"]
@@ -480,6 +532,14 @@ def restore_checkpoint(
                 is_main_node,
             )
             base_model.generator.load_state_dict(filtered_state, strict=False)
+
+        if hasattr(base_model, "cls_projector") and "cls_projector" in checkpoint:
+            filtered_state = filter_partial_model(
+                checkpoint["cls_projector"],
+                base_model.cls_projector.state_dict(),
+                is_main_node,
+            )
+            base_model.cls_projector.load_state_dict(filtered_state, strict=False)
 
         startEpoch = 0.0
         best_loss = np.inf

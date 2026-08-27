@@ -625,11 +625,13 @@ class DeepSetsBody(nn.Module):
         cond_dim=3,
         norm_layer=DynamicTanh,
         act_layer=nn.GELU,
+        energy_weighted_pool=False,
     ):
         super().__init__()
         self.pid = pid
         self.add_info = add_info
         self.conditional = conditional
+        self.energy_weighted_pool = energy_weighted_pool
 
         self.embed = MLP(
             input_dim,
@@ -688,8 +690,15 @@ class DeepSetsBody(nn.Module):
         for norm, phi in zip(self.phi_norms, self.phi_blocks):
             h = h + phi(norm(h)) * mask  # pre-norm residual; padded stays 0
 
-        n_valid = mask.sum(dim=1).clamp(min=1.0)  # (B, 1)
-        z = (h * mask).sum(dim=1) / n_valid        # masked mean pool → (B, D)
+        if self.energy_weighted_pool:
+            # weight each particle by its raw pT (feature index 2 is log(pT);
+            # exponentiate then re-mask since exp(0) = 1, not 0)
+            weight = torch.exp(x[:, :, 2:3]) * mask
+            denom = weight.sum(dim=1).clamp(min=1e-8)  # (B, 1)
+            z = (h * weight).sum(dim=1) / denom         # pT-weighted pool → (B, D)
+        else:
+            n_valid = mask.sum(dim=1).clamp(min=1.0)  # (B, 1)
+            z = (h * mask).sum(dim=1) / n_valid        # masked mean pool → (B, D)
 
         if cond is not None and self.conditional:
             z = z + self.cond_embed(cond)
@@ -762,6 +771,7 @@ class DeepSets(nn.Module):
         cond_dim=3,
         norm_layer=DynamicTanh,
         act_layer=nn.GELU,
+        energy_weighted_pool=False,
     ):
         super().__init__()
         if mode not in ["classifier", "pretrain"]:
@@ -785,6 +795,7 @@ class DeepSets(nn.Module):
             cond_dim=cond_dim,
             norm_layer=norm_layer,
             act_layer=act_layer,
+            energy_weighted_pool=energy_weighted_pool,
         )
 
         self.classifier = DeepSetsHead(

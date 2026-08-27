@@ -5,6 +5,7 @@ from omnilearned.evaluate import run as run_evaluation
 from omnilearned.dataloader import load_data
 from omnilearned.train_hl import run as run_training_hl
 from omnilearned.evaluate_hl import run as run_evaluation_hl
+from omnilearned.omnifold import run as run_omnifold
 
 app = typer.Typer(
     help="OmniLearned: A unified deep learning approach for particle physics",
@@ -114,7 +115,27 @@ def train(
              "2-11 from a 210-class pretrained teacher for a 10-class student. "
              "Default '' keeps all columns.",
     ),
+    distill_cls: bool = typer.Option(
+        False,
+        help="Also match the student's body-token embedding (outputs['x_body']) "
+             "against a pre-saved teacher embedding via MSE (CLS-MSE feature "
+             "distillation). Requires --arch pet2 and teacher companion files "
+             "built with `build_teacher_h5.py --include-cls-embed`.",
+    ),
+    distill_gamma: float = typer.Option(
+        0.5, help="Weight for the CLS-MSE feature distillation term"
+    ),
+    distill_cls_teacher_dim: int = typer.Option(
+        1024,
+        help="Teacher's base_dim, for sizing the student's cls_projector "
+             "(default 1024 matches --size large)",
+    ),
     arch: str = typer.Option("pet2", help="Student architecture: pet2, deep-sets, or mlp"),
+    energy_weighted_pool: bool = typer.Option(
+        False,
+        help="DeepSets only: pool per-particle embeddings weighted by raw pT "
+             "instead of a plain masked mean",
+    ),
 ):
     run_training(
         outdir,
@@ -171,7 +192,96 @@ def train(
         distill_beta=distill_beta,
         distill_T=distill_T,
         distill_teacher_slice=distill_teacher_slice,
+        distill_cls=distill_cls,
+        distill_gamma=distill_gamma,
+        distill_cls_teacher_dim=distill_cls_teacher_dim,
         arch=arch,
+        energy_weighted_pool=energy_weighted_pool,
+    )
+
+
+@app.command()
+def unfold(
+    outdir: str = typer.Option(
+        "", "--output_dir", "-o", help="Directory to output checkpoints"
+    ),
+    save_tag: str = typer.Option("", help="Extra tag for checkpoint models"),
+    pretrain_tag: str = typer.Option(
+        "", help="Tag given to pretrained checkpoint model (with --fine-tune)"
+    ),
+    path: str = typer.Option(
+        "/pscratch/sd/t/twamorka/unfolding",
+        help="Directory containing train_pythia.h5 / train_herwig.h5 "
+        "(see preprocess_omnifold.py)",
+    ),
+    wandb: bool = typer.Option(False, help="use wandb logging"),
+    fine_tune: bool = typer.Option(
+        False, help="Warm-start iteration-0 step-1 model from --pretrain-tag"
+    ),
+    num_feat: int = typer.Option(
+        13, help="Number of input per-particle features (13 for the OmniLearn "
+        "preprocess_omnifold.py schema)"
+    ),
+    size: str = typer.Option("small", "--size", "-s", help="Model size"),
+    interaction: bool = typer.Option(False, help="Use interaction matrix"),
+    local_interaction: bool = typer.Option(False, help="Use local interaction matrix"),
+    num_iter: int = typer.Option(5, help="Number of OmniFold iterations"),
+    patience: int = typer.Option(
+        3, help="Early-stopping patience (epochs) within each Step1/Step2 fit"
+    ),
+    batch: int = typer.Option(512, help="Batch size"),
+    epoch: int = typer.Option(30, help="Max epochs per Step1/Step2 fit"),
+    warmup_epoch: int = typer.Option(1, help="Number of learning rate warmup epochs"),
+    lr: float = typer.Option(3e-5, help="Learning rate"),
+    lr_factor: float = typer.Option(
+        5.0, help="Learning rate factor for new layers when --fine-tune is set"
+    ),
+    wd: float = typer.Option(0.1, help="Weight decay"),
+    b1: float = typer.Option(0.95, help="Lion b1"),
+    b2: float = typer.Option(0.99, help="Lion b2"),
+    optim: str = typer.Option("lion", help="optimizer to use"),
+    sched: str = typer.Option("cosine", help="lr scheduler to use"),
+    use_amp: bool = typer.Option(False, help="Use amp"),
+    amp_dtype: str = typer.Option(
+        "fp16", help="Autocast dtype when --use-amp is set: fp16 or bf16"
+    ),
+    num_workers: int = typer.Option(
+        0,
+        help="Number of DataLoader workers. Defaults to 0 (in-process, no fork): "
+        "unlike train.py's single wandb.init(), unfold builds fresh DataLoaders "
+        "on every Step1/Step2 call after wandb is already live, which would "
+        "refork workers post-wandb.init() on every step and risk the documented "
+        "wandb-forked-worker deadlock (see distill-lazy-teacher-progress memory, "
+        "2026-08-08). Data is already fully in-memory here, so workers buy little "
+        "anyway -- only raise this if you've verified it's safe for your run.",
+    ),
+):
+    run_omnifold(
+        outdir,
+        save_tag,
+        pretrain_tag,
+        path,
+        wandb,
+        fine_tune,
+        num_feat,
+        size,
+        interaction,
+        local_interaction,
+        num_iter,
+        patience,
+        batch,
+        epoch,
+        warmup_epoch,
+        lr,
+        lr_factor,
+        wd,
+        b1,
+        b2,
+        optim,
+        sched,
+        use_amp,
+        amp_dtype,
+        num_workers,
     )
 
 
@@ -298,6 +408,11 @@ def evaluate(
         help="Which chunk (0..num_chunks-1) this invocation processes.",
     ),
     arch: str = typer.Option("pet2", help="Student architecture: pet2, deep-sets, or mlp"),
+    energy_weighted_pool: bool = typer.Option(
+        False,
+        help="DeepSets only: pool per-particle embeddings weighted by raw pT "
+             "instead of a plain masked mean",
+    ),
 ):
     run_evaluation(
         indir,
@@ -329,6 +444,7 @@ def evaluate(
         num_chunks=num_chunks,
         chunk_idx=chunk_idx,
         arch=arch,
+        energy_weighted_pool=energy_weighted_pool,
     )
 
 
