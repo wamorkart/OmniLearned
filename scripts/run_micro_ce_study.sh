@@ -50,7 +50,7 @@ eval_one() {
         log "Evaluating ${tag} (attempt ${attempt})"
         SAVE_TAG="$tag" salloc -C gpu -q interactive -t 60 --nodes 4 \
             --ntasks-per-node 4 --gpus-per-node 4 -A m3246 \
-            bash -c "SAVE_TAG=$tag bash $SCRIPT_DIR/evaluate_top_micro_ce.sh" \
+            bash -c "SAVE_TAG=$tag bash $SCRIPT_DIR/run_eval.sh top_micro_ce" \
             > "$LOG_DIR/${tag}_eval_attempt${attempt}.log" 2>&1
         local status=$?
         local n

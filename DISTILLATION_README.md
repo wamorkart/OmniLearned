@@ -85,11 +85,14 @@ produces many small files:
   event split can't finish inside one interactive session. Submitted per
   dataset/split/chunk; expects `DATASET`, `DATASET_TYPE`, `NUM_CHUNKS`,
   `CHUNK_IDX`, etc. exported by a submission wrapper.
-- `evaluate_chunk.sh`, `evaluate_jetclass_distill.sh`,
-  `evaluate_jetclass_finetune.sh`, `evaluate_top_distill.sh`,
-  `evaluate_top_distill_pretrain.sh`, `evaluate_top_large.sh`,
-  `evaluate_metrics_top_sweep.sh`, `evaluate_metrics_top_T_sweep.sh` — same
-  pattern, specialized per dataset/checkpoint/sweep.
+- `run_eval.sh <config>` + `configs/eval/<config>.sh` — config-driven
+  "evaluate one student checkpoint on a split" (top/jetclass distill, micro,
+  mlp, pretrain-KD, ptq lineages). Replaces the old per-checkpoint
+  `evaluate_{top_distill*,jetclass_*,top_micro_ce}.sh`. See `scripts/README.md`.
+- `evaluate_chunk.sh`, `evaluate_top_large.sh`,
+  `evaluate_metrics_top_sweep.sh`, `evaluate_metrics_top_T_sweep.sh` —
+  structurally different (sharded/chunked dumps, multi-tag metrics tables),
+  still their own scripts.
 
 Output filenames encode tag/dataset/split/chunk/rank, e.g.
 `outputs_pretrain_l_atlas_train_chunk3of24_rank5.npz`, each holding `logits`
@@ -301,7 +304,7 @@ tmux new-session -s distill_T8 'bash distill_loop_top_T_sweep.sh 8'
 tmux new-session -s distill_T8_r1 'bash distill_loop_top_T_sweep.sh 8 r1'
 ```
 
-### 8. Monitoring (`distill_health_check.sh`, `distill_status_T_sweep.sh`)
+### 8. Monitoring (`distill_health_check.sh`)
 
 Run as a second, independent background process (separate `screen`/`tmux`
 session) alongside a loop script. Every `CHECK_INTERVAL` it appends a snapshot
@@ -309,23 +312,21 @@ to a log: `squeue` state, the loop's own `summary.log` tail, a grep for
 errors/NaN in the latest session log, checkpoint file mtime/size (proof of
 progress), and the latest wandb `loss`/`loss_kd` via the wandb API with an
 explicit NaN check. Log-only — it doesn't page anyone, so check the log
-manually when returning to a run. `distill_status_T_sweep.sh` is the sweep
-variant covering all T-sweep `SAVE_TAG`s at once.
+manually when returning to a run.
 
 ```bash
 screen -dmS distill_health bash distill_health_check.sh
 # ... later:
 tail -f /pscratch/sd/t/twamorka/omnilearned/results/distill_health_check.log
-
-bash distill_status_T_sweep.sh   # one-shot status table across all T-sweep tags
 ```
 
 ### 9. Evaluate the distilled student + compute metrics
 
 Same `omnilearned evaluate` machinery as step 1, pointed at the **student**
-checkpoint (`evaluate_top_distill.sh`, `evaluate_top_distill_pretrain.sh`,
-`evaluate_jetclass_distill.sh`, `evaluate_jetclass_finetune.sh`,
-`evaluate_train.sh`), writing `outputs_<save-tag>_<dataset>_test_*.npz`.
+checkpoint (`run_eval.sh top_distill`, `run_eval.sh top_distill_pretrain`,
+`run_eval.sh jetclass_distill`, `run_eval.sh jetclass_finetune`; or
+`evaluate_train.sh` for the large teacher), writing
+`outputs_<save-tag>_<dataset>_test_*.npz`.
 
 Then:
 - `compute_metrics_top.py --indir <dir> --tag <save-tag>` — binary top-tagging
@@ -338,7 +339,7 @@ baseline of the same size (no KD, same data) and the teacher (large model) —
 the whole point is to land closer to the teacher than the baseline does.
 
 ```bash
-bash evaluate_top_distill.sh   # writes outputs_<save-tag>_top_test_rank*.npz
+bash run_eval.sh top_distill   # writes outputs_<save-tag>_top_test_rank*.npz
 
 python compute_metrics_top.py \
   --indir /pscratch/sd/t/twamorka/omnilearned/eval/top_distill/ \
