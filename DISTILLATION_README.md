@@ -230,9 +230,12 @@ Variants:
 - `distill_train_top_sweep.sh` / `distill_train_top_rep.sh` — same as above but
   read `$ALPHA`/`$BETA`/`$DISTILL_T`/`$SAVE_TAG` from the environment, so a sweep
   loop can parameterize a family of runs without editing the script.
-- `distill_train_jetclass*.sh`, `distill_train_jetclass_a00.sh`,
-  `distill_train_jetclass_pretrain_l.sh` — JetClass-specific analogues (student
-  init variants: scratch vs. init from a pretrain checkpoint).
+- `run_train.sh jetclass_a05` / `jetclass_a00` (configs `configs/train/
+  jetclass_a{05,00}.sh`) — distil pretrain_l → PET2-small on 10-class JetClass,
+  `--distill-teacher-slice 2:12`. Replace `distill_train_jetclass_{a00,
+  pretrain_l}.sh`. The legacy `distill_train_jetclass.sh` (num-classes 210,
+  `_new` tag) and the `distill_train_jetclass_merged_*` smoke runs are not
+  migrated.
 - `run_train.sh ft_*` (configs `configs/train/ft_*.sh`) — **not KD**: plain
   `--fine-tune` runs (`FINETUNE=1 DISTILL=0 PRETRAIN_TAG=…`), either a CE-only
   baseline or a fine-tune of a KD-pretrained checkpoint (e.g.
