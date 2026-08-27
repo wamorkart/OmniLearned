@@ -7,7 +7,7 @@
 #
 #   LOOP_LOG_DIR=/pscratch/.../logs/<name> [LOOP_TAG=<tag>] \
 #   [NODES=4] [WALLTIME=240] [MAX_LOOPS=20] \
-#     scripts/lib/resubmit_loop.sh bash scripts/train.sh <config>
+#     scripts/lib/resubmit_loop.sh bash scripts/run_train.sh <config>
 #
 # LOOP_TAG, when set, prefixes the per-session log files and summary.log so
 # several replicate loops can share one LOOP_LOG_DIR (matches the old

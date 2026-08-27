@@ -1,6 +1,7 @@
 #!/bin/bash
-# Shared setup for the config-driven drivers (train.sh, and later evaluate.sh /
-# finetune.sh). Source this, then call run_ddp with the command to launch.
+# Shared setup for the config-driven drivers (run_train.sh, and later
+# evaluate.sh / finetune.sh). Source this, then call run_ddp with the command
+# to launch.
 
 # Load the conda env + pytorch module and set the NCCL knobs every OmniLearned
 # job on Perlmutter needs. Runs on the salloc head node before srun; srun

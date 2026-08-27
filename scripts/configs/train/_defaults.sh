@@ -1,7 +1,7 @@
-# Defaults for scripts/train.sh. train.sh sources this first, then the named
-# config under configs/train/, so a config only lists what differs from here.
-# Env vars in train.sh's override whitelist (SAVE_TAG ALPHA BETA DISTILL_T)
-# still win over both, for replicate / sweep loops.
+# Defaults for scripts/run_train.sh. run_train.sh sources this first, then the
+# named config under configs/train/, so a config only lists what differs from
+# here. Env vars in run_train.sh's override whitelist (SAVE_TAG ALPHA BETA
+# DISTILL_T) still win over both, for replicate / sweep loops.
 #
 # These defaults reproduce the old distill_train_top.sh (large fine-tuned top
 # teacher -> PET2-small student, KD alpha=beta=0.5, T=4).
