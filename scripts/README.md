@@ -42,6 +42,68 @@ SAVE_TAG=..._r3 scripts/run_train.sh top_micro_a05    # replicate (env override)
 screen -dmS distill_top bash scripts/distill_loop_top.sh top_medium_a00_b10
 ```
 
+### Worked example: distil a PET2-small top-tagging student
+
+Goal: train the `top_small_a05` student (large fine-tuned top teacher →
+PET2-small, KD α=β=0.5, T=4). All commands run from the **repo root**.
+
+1. **See what it will run** — no allocation needed:
+
+   ```
+   scripts/run_train.sh top_small_a05 --dry-run
+   ```
+
+   `configs/train/top_small_a05.sh` sets only `SAVE_TAG=distill_top_small_scratch_a05_T4`;
+   everything else (`--size small`, `--interaction --local-interaction`,
+   `--batch 128`, `--epoch 50`, `--lr 5e-4`, `--distill … --distill-t 4`,
+   teacher `companion_fine_tune_top_l`, `--wandb`) comes from
+   `configs/train/_defaults.sh`.
+
+2. **Launch it the normal way** — resubmit loop inside `screen`, so it
+   survives disconnects and re-`salloc`s on walltime/preemption
+   (`--resuming` picks up the checkpoint):
+
+   ```
+   screen -dmS distill_top_small bash scripts/distill_loop_top.sh top_small_a05
+   ```
+
+   Logs: `/pscratch/sd/t/twamorka/omnilearned/logs/distill_loop_top/`
+   (`summary.log` = one line per session; `session_*.out` = full output).
+   Checkpoint: `/pscratch/.../checkpoints/best_model_distill_top_small_scratch_a05_T4.pt`.
+   Stops on its own when epoch 50/50 is reached; caps at `MAX_LOOPS=20`
+   sessions (`MAX_LOOPS=40 bash scripts/distill_loop_top.sh top_small_a05`
+   to raise it).
+
+3. **Or run a single session by hand** — one 4-node × 4-GPU interactive
+   allocation, no loop:
+
+   ```
+   salloc -C gpu -q interactive -t 240 --nodes 4 --ntasks-per-node 4 \
+          --gpus-per-node 4 -A m3246 bash scripts/run_train.sh top_small_a05
+   ```
+
+4. **A replicate** (fresh random init) — override `SAVE_TAG`; the loop keys
+   its per-session logs off `LOOP_TAG` so replicates share one log dir:
+
+   ```
+   bash scripts/distill_loop_top_rep.sh distill_top_small_scratch_a05_T4_r1
+   ```
+
+5. **Evaluate the trained student** on the top test split:
+
+   ```
+   salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 \
+          --gpus-per-node 4 -A m3246 bash scripts/run_eval.sh top_distill
+   python compute_metrics_top.py \
+       --indir /pscratch/sd/t/twamorka/omnilearned/eval/top_distill/ \
+       --tag distill_top_small_scratch_a05_T4
+   ```
+
+To train a *different* config, swap `top_small_a05` for any name under
+`configs/train/` (`ls scripts/configs/train/`). They differ only in their
+`_defaults.sh` overrides, and each file's header comment names the old
+per-experiment script it replaced.
+
 The per-config `distill_loop_top_*.sh` shims are gone, folded into
 `distill_loop_top.sh <config>`. Still their own scripts: the arg-taking
 `distill_loop_top_{rep,micro_rep,micro_noint_rep,sweep}.sh`. `distill_queue_*`
