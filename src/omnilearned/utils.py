@@ -377,7 +377,11 @@ def restore_checkpoint(
 
         if lr_scheduler is not None:
             lr_scheduler.load_state_dict(checkpoint["sched"])
-        startEpoch = checkpoint["epoch"] + 1
+        # checkpoint["epoch"] is already the count of epochs completed
+        # (save_checkpoint is called with epoch + 1), so it is exactly the
+        # 0-indexed epoch to resume at. The old "+ 1" here skipped one epoch
+        # of training on every resume.
+        startEpoch = checkpoint["epoch"]
         best_loss = checkpoint["loss"]
 
     else:
