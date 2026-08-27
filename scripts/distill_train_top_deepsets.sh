@@ -9,6 +9,15 @@
 # --seed flag exists in the CLI, so a fresh tag + fresh process = a true
 # replicate). Override wandb with WANDB=0/1.
 #
+# SIZE_OVERRIDE=<size> runs the selected recipe at a different DeepSets width:
+#   nano(5.1k)  distillnet(11k)  micro(19k)  tiny(76k)  small(299k)  medium  large
+# (see get_deepsets_parameters in src/omnilearned/utils.py). The checkpoint
+# tag gets a _<size> suffix (unless SAVE_TAG= is also given) so --resuming
+# stays per-size. Example -- distil fine_tune_top_l into every width:
+#   for s in nano distillnet micro tiny small; do
+#     SIZE_OVERRIDE=$s CONFIG=a05 bash scripts/distill_loop_top_deepsets.sh
+#   done
+#
 #   CONFIG   save-tag                                              size        wd    distill  a/b       teacher  extra
 #   a05      distill_top_deepsets_small_scratch_a05_T4_archfix0804 small       0.5   yes      0.5/0.5   l        -                    (reference / confirmed best)
 #   a00_b10  distill_top_deepsets_small_scratch_a00_b10_T4         small       0.5   yes      0.0/1.0   l        -                    (pure KD, DistillNet-style)
@@ -71,6 +80,11 @@ case "$CONFIG" in
     echo "unknown CONFIG='$CONFIG' (see table in this script's header)" >&2
     exit 2 ;;
 esac
+
+if [ -n "${SIZE_OVERRIDE:-}" ] && [ "$SIZE_OVERRIDE" != "$SIZE" ]; then
+  [ -z "${SAVE_TAG:-}" ] && TAG="${TAG}_${SIZE_OVERRIDE}"
+  SIZE="$SIZE_OVERRIDE"
+fi
 
 SAVE_TAG="${SAVE_TAG:-$TAG}"
 WANDB="${WANDB:-$WANDB_DEFAULT}"

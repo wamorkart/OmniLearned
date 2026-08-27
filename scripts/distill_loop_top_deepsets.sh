@@ -10,8 +10,9 @@
 #
 # CONFIG is passed straight through to distill_train_top_deepsets.sh (see its
 # header for the table; default a05). SAVE_TAG overrides the checkpoint tag
-# for replicate runs. Always launch inside screen so the loop survives a
-# disconnect.
+# for replicate runs. SIZE_OVERRIDE=<size> runs the recipe at a different
+# DeepSets width (nano|distillnet|micro|tiny|small|medium|large). Always
+# launch inside screen so the loop survives a disconnect.
 #
 # CAUTION: a prior outer resubmit loop silently died after an NCCL crash with
 # no surviving screen session and went unnoticed for weeks (see
@@ -25,8 +26,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CONFIG:-${1:-a05}}"
 export CONFIG
 [ -n "${SAVE_TAG:-}" ] && export SAVE_TAG
+[ -n "${SIZE_OVERRIDE:-}" ] && export SIZE_OVERRIDE
 
-LABEL="${SAVE_TAG:-$CONFIG}"
+LABEL="${SAVE_TAG:-$CONFIG${SIZE_OVERRIDE:+_$SIZE_OVERRIDE}}"
 LOG_DIR=/pscratch/sd/t/twamorka/omnilearned/logs/distill_loop_top_deepsets_$LABEL
 mkdir -p "$LOG_DIR"
 
