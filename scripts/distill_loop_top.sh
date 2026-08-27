@@ -29,6 +29,7 @@ declare -A LOOP_CFG=(
     [top_micro_noint_a05]="$LOG_BASE/distill_loop_top_micro_noint|20"
     [top_mlp_a05]="$LOG_BASE/distill_loop_top_mlp|8"
     [top_mlp_a00_b10]="$LOG_BASE/distill_loop_top_mlp_a00_b10|8"
+    [top_deepsets_a05]="$LOG_BASE/distill_loop_top_deepsets|8"
     [top_medium_a00_b10]="$SWEEP/distill_top_medium_scratch_a00_b10_T4|50"
     [top_medium_a05_b05]="$SWEEP/distill_top_medium_scratch_a05_b05_T4|50"
     [top_small_via_medium_a00_b10]="$SWEEP/distill_top_small_via_medium_a00_b10_T4|50"
