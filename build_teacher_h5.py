@@ -1,31 +1,34 @@
 """One-time conversion: sharded teacher-logit .npz -> per-source-h5 companions.
 
-The evaluate pipeline writes teacher logits as many sharded .npz files, e.g.
+The evaluate pipeline writes teacher outputs as many sharded .npz files, e.g.
     outputs_<tag>_<dataset>_<split>_chunk<K>of<N>_rank<r>.npz
     outputs_<tag>_<dataset>_<split>_rank<r>.npz
     outputs_<tag>_<dataset>_<split>_<r>.npz
 Each holds `logits` (N, C) fp16 and `sample_keys` (N, 2) int64 = (file_idx,
 sample_idx), where file_idx is the *local* (per-dataset) index into the
-sorted list of source h5 files for that dataset/split.
+sorted list of source h5 files for that dataset/split. With
+`--include-cls-embed` (see evaluate.py's `--save-cls-embed`), each npz also
+holds `cls_embed` (N, num_tokens*base_dim) fp16 -- the teacher's flattened
+body-token embedding, used for CLS-MSE feature distillation.
 
 This script builds, for every source h5 file, a companion
     <out-dir>/<dataset>/<split>/<source_stem>.h5
-holding a `teacher_logits` dataset of shape (N_f, C) fp16, indexed by
-sample_idx -- so training can read one row on demand (`tf["teacher_logits"][i]`)
-exactly the way HEPDataset reads `f["data"][i]`, with no in-RAM array or dict.
+holding a `teacher_logits` dataset (and, if requested, a `teacher_cls_embed`
+dataset), indexed by sample_idx -- so training can read one row on demand
+(`tf["teacher_logits"][i]`) exactly the way HEPDataset reads `f["data"][i]`,
+with no in-RAM array or dict.
 
 Source-file enumeration mirrors dataloader.load_data EXACTLY:
     sorted(glob("*.h5") + glob("*.hdf5"))
 over <data-path>/<dataset>/<split>/, so file_idx <-> filename stays aligned.
 
 Companions are initialized to NaN; a coverage pass fails loudly if any row is
-left unfilled (a NaN teacher logit would poison the KD loss).
+left unfilled (a NaN teacher value would poison the KD loss).
 """
 
 import argparse
 import glob
 import os
-from collections import defaultdict
 from pathlib import Path
 
 import h5py
@@ -33,6 +36,13 @@ import numpy as np
 
 PRETRAIN_NAMES = ["atlas", "aspen", "jetclass", "jetclass2", "h1", "cms_qcd", "cms_bsm"]
 NAN_SCAN_CHUNK = 1_000_000
+
+# Each field is (npz_key, h5_key). `logits` is always present; `cls_embed`
+# is only read/written when --include-cls-embed is passed (the npz shards
+# must have been produced by `evaluate.py --save-cls-embed` for that field
+# to exist).
+LOGITS_FIELD = ("logits", "teacher_logits")
+CLS_EMBED_FIELD = ("cls_embed", "teacher_cls_embed")
 
 
 def expand_datasets(spec):
@@ -68,35 +78,41 @@ def npz_files(npz_dir, tag, dataset, split):
     return sorted(glob.glob(pattern))
 
 
-def companions_complete(comp_paths, n_rows, num_classes):
-    """True iff every companion exists, has the right shape, and zero NaN rows.
-
-    Returns (ok, reason). Used by --skip-existing to avoid re-truncating and
-    rebuilding a dataset/split that already converted cleanly.
+def companions_complete(comp_paths, n_rows, field_dims):
+    """True iff every companion exists, has every requested field at the
+    right shape, and zero NaN rows in each. Used by --skip-existing to avoid
+    re-truncating and rebuilding a dataset/split that already converted
+    cleanly. `field_dims` is {h5_key: dim}.
     """
     for comp, N_f in zip(comp_paths, n_rows):
         if not comp.exists():
             return False, f"missing {comp.name}"
         try:
             with h5py.File(comp, "r") as cf:
-                if "teacher_logits" not in cf:
-                    return False, f"{comp.name}: no teacher_logits dataset"
-                dset = cf["teacher_logits"]
-                if dset.shape != (N_f, num_classes):
-                    return False, (
-                        f"{comp.name}: shape {tuple(dset.shape)} != "
-                        f"({N_f}, {num_classes})"
-                    )
-                for start in range(0, N_f, NAN_SCAN_CHUNK):
-                    end = min(start + NAN_SCAN_CHUNK, N_f)
-                    if np.isnan(dset[start:end]).any():
-                        return False, f"{comp.name}: NaN rows present"
+                for h5_key, dim in field_dims.items():
+                    if h5_key not in cf:
+                        return False, f"{comp.name}: no {h5_key} dataset"
+                    dset = cf[h5_key]
+                    if dset.shape != (N_f, dim):
+                        return False, (
+                            f"{comp.name}: {h5_key} shape {tuple(dset.shape)} != "
+                            f"({N_f}, {dim})"
+                        )
+                    for start in range(0, N_f, NAN_SCAN_CHUNK):
+                        end = min(start + NAN_SCAN_CHUNK, N_f)
+                        if np.isnan(dset[start:end]).any():
+                            return False, f"{comp.name}: {h5_key} has NaN rows"
         except OSError as e:
             return False, f"{comp.name}: unreadable ({e})"
     return True, "all companions present, correct shape, zero NaN"
 
 
-def build_one(npz_dir, tag, data_path, out_dir, dataset, split, skip_existing=False):
+def build_one(
+    npz_dir, tag, data_path, out_dir, dataset, split, fields, skip_existing=False
+):
+    """`fields` is a list of (npz_key, h5_key) pairs to convert, e.g.
+    [LOGITS_FIELD] or [LOGITS_FIELD, CLS_EMBED_FIELD].
+    """
     print(f"\n=== {dataset}/{split} ===")
     srcs = source_files(data_path, dataset, split)
     if not srcs:
@@ -110,10 +126,17 @@ def build_one(npz_dir, tag, data_path, out_dir, dataset, split, skip_existing=Fa
         )
     print(f"  source files: {len(srcs)}   npz shards: {len(npzs)}")
 
-    # num_classes from the first shard.
+    # Per-field dim from the first shard.
     with np.load(npzs[0]) as z:
-        num_classes = int(z["logits"].shape[1])
-    print(f"  num_classes (C): {num_classes}")
+        field_dims = {}
+        for npz_key, h5_key in fields:
+            if npz_key not in z:
+                raise KeyError(
+                    f"{npzs[0]}: missing '{npz_key}' -- was this dataset/split "
+                    f"evaluated with the right flags for field '{h5_key}'?"
+                )
+            field_dims[h5_key] = int(z[npz_key].shape[1])
+    print(f"  fields: {field_dims}")
 
     # Row count per source file and companion paths (no writes yet).
     out_split_dir = Path(out_dir) / dataset / split
@@ -129,43 +152,47 @@ def build_one(npz_dir, tag, data_path, out_dir, dataset, split, skip_existing=Fa
 
     # Skip a clean, already-converted dataset/split before truncating anything.
     if skip_existing:
-        ok, reason = companions_complete(comp_paths, n_rows, num_classes)
+        ok, reason = companions_complete(comp_paths, n_rows, field_dims)
         if ok:
             print(f"  SKIP {dataset}/{split}: {reason}")
-            return len(srcs), sum(n_rows), num_classes
+            return len(srcs), sum(n_rows), field_dims
         print(f"  (re)building {dataset}/{split}: {reason}")
 
     # Pre-create companions initialized to NaN (truncates any existing file).
-    coverage = []  # bool mask per file (which rows have been written)
+    # coverage[h5_key] -> list of per-file bool masks (which rows written).
+    coverage = {h5_key: [] for _, h5_key in fields}
     for comp, N_f in zip(comp_paths, n_rows):
         with h5py.File(comp, "w") as cf:
-            dset = cf.create_dataset(
-                "teacher_logits",
-                shape=(N_f, num_classes),
-                dtype=np.float16,
-                chunks=(min(N_f, 4096), num_classes) if N_f > 0 else None,
-            )
-            # Fill with NaN sentinel in chunks (avoid a big in-RAM array).
-            nan_row = np.full((1, num_classes), np.nan, dtype=np.float16)
-            for start in range(0, N_f, NAN_SCAN_CHUNK):
-                end = min(start + NAN_SCAN_CHUNK, N_f)
-                dset[start:end] = np.broadcast_to(
-                    nan_row, (end - start, num_classes)
+            for h5_key, dim in field_dims.items():
+                dset = cf.create_dataset(
+                    h5_key,
+                    shape=(N_f, dim),
+                    dtype=np.float16,
+                    chunks=(min(N_f, 4096), dim) if N_f > 0 else None,
                 )
-        coverage.append(np.zeros(N_f, dtype=bool))
+                nan_row = np.full((1, dim), np.nan, dtype=np.float16)
+                for start in range(0, N_f, NAN_SCAN_CHUNK):
+                    end = min(start + NAN_SCAN_CHUNK, N_f)
+                    dset[start:end] = np.broadcast_to(nan_row, (end - start, dim))
+        for h5_key in field_dims:
+            coverage[h5_key].append(np.zeros(N_f, dtype=bool))
 
     # Open companions for writing (one handle each).
     handles = [h5py.File(p, "a") for p in comp_paths]
     try:
-        n_dup_diff = 0
+        n_dup_diff = {h5_key: 0 for h5_key in field_dims}
         for npz_path in npzs:
             with np.load(npz_path) as z:
-                logits = z["logits"]  # (n, C) fp16
-                keys = z["sample_keys"]  # (n, 2) int64
-                if logits.shape[1] != num_classes:
-                    raise ValueError(
-                        f"{npz_path}: C={logits.shape[1]} != {num_classes}"
-                    )
+                keys = z["sample_keys"]  # (n, 2) int64, shared across fields
+                values = {}
+                for npz_key, h5_key in fields:
+                    v = z[npz_key]
+                    if v.shape[1] != field_dims[h5_key]:
+                        raise ValueError(
+                            f"{npz_path}: {npz_key} dim={v.shape[1]} != "
+                            f"{field_dims[h5_key]}"
+                        )
+                    values[h5_key] = v
                 fids = keys[:, 0]
                 sids = keys[:, 1]
                 for fid in np.unique(fids):
@@ -184,68 +211,76 @@ def build_one(npz_dir, tag, data_path, out_dir, dataset, split, skip_existing=Fa
                         )
                     order = np.argsort(sidx, kind="stable")
                     sidx_sorted = sidx[order]
-                    vals = logits[rows][order]
 
-                    # Detect double-writes with differing values (stray/dup npz).
-                    already = coverage[fid][sidx_sorted]
-                    if already.any():
-                        dup_pos = sidx_sorted[already]
-                        existing = handles[fid]["teacher_logits"][
-                            np.sort(np.unique(dup_pos))
-                        ]
-                        # cheap heads-up; differing values flagged below in detail
-                        n_dup = int(already.sum())
-                        new_for_dup = vals[already]
-                        # compare against just-read existing for the unique set
-                        diff = ~np.allclose(
-                            np.nan_to_num(existing[0]), np.nan_to_num(new_for_dup[0])
-                        ) if n_dup else False
-                        if diff:
-                            n_dup_diff += n_dup
-                            print(
-                                f"  WARN: {n_dup} cells in {comp_paths[fid].name} "
-                                f"rewritten with DIFFERING values (from {os.path.basename(npz_path)})"
+                    for h5_key, arr in values.items():
+                        vals = arr[rows][order]
+
+                        # Detect double-writes with differing values (stray/dup npz).
+                        already = coverage[h5_key][fid][sidx_sorted]
+                        if already.any():
+                            dup_pos = sidx_sorted[already]
+                            existing = handles[fid][h5_key][
+                                np.sort(np.unique(dup_pos))
+                            ]
+                            n_dup = int(already.sum())
+                            new_for_dup = vals[already]
+                            diff = (
+                                ~np.allclose(
+                                    np.nan_to_num(existing[0]),
+                                    np.nan_to_num(new_for_dup[0]),
+                                )
+                                if n_dup
+                                else False
                             )
+                            if diff:
+                                n_dup_diff[h5_key] += n_dup
+                                print(
+                                    f"  WARN: {n_dup} cells in {comp_paths[fid].name} "
+                                    f"[{h5_key}] rewritten with DIFFERING values "
+                                    f"(from {os.path.basename(npz_path)})"
+                                )
 
-                    handles[fid]["teacher_logits"][sidx_sorted] = vals
-                    coverage[fid][sidx_sorted] = True
-        if n_dup_diff:
-            print(f"  WARN total differing double-written cells: {n_dup_diff}")
+                        handles[fid][h5_key][sidx_sorted] = vals
+                        coverage[h5_key][fid][sidx_sorted] = True
+        for h5_key, n in n_dup_diff.items():
+            if n:
+                print(f"  WARN total differing double-written cells [{h5_key}]: {n}")
     finally:
         for h in handles:
             h.close()
 
     # Coverage check: re-scan each companion for any remaining NaN rows.
     missing_total = 0
-    for src, comp, N_f in zip(srcs, comp_paths, n_rows):
-        n_missing = 0
-        first_missing = None
+    for comp, N_f in zip(comp_paths, n_rows):
         with h5py.File(comp, "r") as cf:
-            dset = cf["teacher_logits"]
-            for start in range(0, N_f, NAN_SCAN_CHUNK):
-                end = min(start + NAN_SCAN_CHUNK, N_f)
-                block = dset[start:end]
-                bad = np.isnan(block).any(axis=1)
-                if bad.any():
-                    n_missing += int(bad.sum())
-                    if first_missing is None:
-                        first_missing = start + int(np.where(bad)[0][0])
-        if n_missing:
-            missing_total += n_missing
-            print(
-                f"  MISSING: {comp.name}: {n_missing}/{N_f} rows still NaN "
-                f"(first at sample_idx {first_missing})"
-            )
+            for h5_key in field_dims:
+                dset = cf[h5_key]
+                n_missing = 0
+                first_missing = None
+                for start in range(0, N_f, NAN_SCAN_CHUNK):
+                    end = min(start + NAN_SCAN_CHUNK, N_f)
+                    block = dset[start:end]
+                    bad = np.isnan(block).any(axis=1)
+                    if bad.any():
+                        n_missing += int(bad.sum())
+                        if first_missing is None:
+                            first_missing = start + int(np.where(bad)[0][0])
+                if n_missing:
+                    missing_total += n_missing
+                    print(
+                        f"  MISSING: {comp.name} [{h5_key}]: {n_missing}/{N_f} rows "
+                        f"still NaN (first at sample_idx {first_missing})"
+                    )
     if missing_total:
         raise RuntimeError(
-            f"{dataset}/{split}: {missing_total} rows have no teacher logits. "
+            f"{dataset}/{split}: {missing_total} rows have no teacher value. "
             "Conversion incomplete -- do NOT use for distillation."
         )
     print(
         f"  OK {dataset}/{split}: {len(srcs)} companions, "
-        f"{sum(n_rows)} rows, C={num_classes}, zero NaN."
+        f"{sum(n_rows)} rows, fields={field_dims}, zero NaN."
     )
-    return len(srcs), sum(n_rows), num_classes
+    return len(srcs), sum(n_rows), field_dims
 
 
 def main():
@@ -277,6 +312,13 @@ def main():
         help="train / val / test (comma-list allowed)",
     )
     ap.add_argument(
+        "--include-cls-embed",
+        action="store_true",
+        help="Also convert the teacher's `cls_embed` field (requires npz shards "
+        "produced by `evaluate.py --save-cls-embed`) into a `teacher_cls_embed` "
+        "companion dataset, for CLS-MSE feature distillation.",
+    )
+    ap.add_argument(
         "--skip-existing",
         action="store_true",
         help="Skip a dataset/split whose companions all exist with the right "
@@ -287,24 +329,26 @@ def main():
     out_dir = args.out_dir or os.path.join(args.npz_dir, "companion")
     datasets = expand_datasets(args.dataset)
     splits = [s.strip() for s in args.split.split(",") if s.strip()]
+    fields = [LOGITS_FIELD] + ([CLS_EMBED_FIELD] if args.include_cls_embed else [])
     print(f"npz-dir : {args.npz_dir}")
     print(f"out-dir : {out_dir}")
     print(f"tag     : {args.tag}")
     print(f"datasets: {datasets}")
     print(f"splits  : {splits}")
+    print(f"fields  : {[h5_key for _, h5_key in fields]}")
 
     summary = []
     for ds in datasets:
         for sp in splits:
-            nfiles, nrows, C = build_one(
+            nfiles, nrows, field_dims = build_one(
                 args.npz_dir, args.tag, args.data_path, out_dir, ds, sp,
-                skip_existing=args.skip_existing,
+                fields, skip_existing=args.skip_existing,
             )
-            summary.append((ds, sp, nfiles, nrows, C))
+            summary.append((ds, sp, nfiles, nrows, field_dims))
 
     print("\n=== SUMMARY ===")
-    for ds, sp, nfiles, nrows, C in summary:
-        print(f"  {ds}/{sp}: files={nfiles} rows={nrows} C={C}")
+    for ds, sp, nfiles, nrows, field_dims in summary:
+        print(f"  {ds}/{sp}: files={nfiles} rows={nrows} fields={field_dims}")
 
 
 if __name__ == "__main__":

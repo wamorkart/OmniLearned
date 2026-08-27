@@ -1,8 +1,10 @@
 """Plot the large teacher's (fine_tune_top_l) soft outputs on the top-tagging test set.
 
 Panel 1: raw P(top) from the teacher's softmax (T=1), log-scaled counts.
-Panel 2: temperature-softened targets softmax(logit/T) for T in {1,2,4,8,16},
-reconstructed by inverting the T=1 probability back to a logit and rescaling.
+Panel 2: temperature-softened targets softmax(logit/T) for T in
+{0.125, 0.25, 0.5, 1, 2, 4, 8, 16}, reconstructed by inverting the T=1 probability
+back to a logit and rescaling. T<1 sharpens back toward the raw bimodal T=1 shape
+(matching the T-sweep's observed collapse below T=1); T>1 flattens it.
 
 Usage:
     python plot_teacher_soft_outputs.py --indir . --tag fine_tune_top_l \
@@ -17,7 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 SIGNAL_CLASS = 1
-TEMPERATURES = [1, 2, 4, 8, 16]
+TEMPERATURES = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16]
 EPS = 1e-7
 
 
@@ -67,16 +69,26 @@ def main():
     # Panel 2: temperature-softened targets
     bin_edges = np.linspace(0, 1, 31)
     centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    colors = {1: "#86b6ef", 2: "#5598e7", 4: "#2a78d6", 8: "#1c5cab", 16: "#0d366b"}
+    colors = {
+        0.125: "#7a0000",
+        0.25: "#b3221a",
+        0.5: "#e8813a",
+        1: "#444444",
+        2: "#86b6ef",
+        4: "#5598e7",
+        8: "#2a78d6",
+        16: "#0d366b",
+    }
     for T in TEMPERATURES:
         p_T = softmax_temp(p1, T)
         counts, _ = np.histogram(p_T, bins=bin_edges)
-        ax2.plot(centers, counts, marker="o", markersize=3, color=colors[T], label=f"T = {T}")
+        style = "--" if T < 1 else "-"
+        ax2.plot(centers, counts, style, marker="o", markersize=3, color=colors[T], label=f"T = {T}")
     ax2.set_yscale("log")
     ax2.set_xlabel("softened score = softmax(logit / T)")
     ax2.set_ylabel("count (log scale)")
-    ax2.set_title("Temperature-softened teacher targets")
-    ax2.legend()
+    ax2.set_title("Temperature-softened teacher targets (dashed: T<1 sharpening)")
+    ax2.legend(ncol=2, fontsize=8)
 
     fig.tight_layout()
     os.makedirs(os.path.dirname(args.outfile) or ".", exist_ok=True)

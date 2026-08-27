@@ -70,7 +70,7 @@ def compute(indir, tag):
     acc = (pred_classes == labels).mean() * 100
     auc = roc_auc_score(labels, scores)
     fpr, tpr, _ = roc_curve(labels, scores)
-    r50 = rej_at_eff(fpr, tpr, 0.50)
+    r50 = rej_at_eff(fpr, tpr, 0.50)∏
     r30 = rej_at_eff(fpr, tpr, 0.30)
     return dict(acc=acc, auc=auc, r50=r50, r30=r30, n=len(labels))
 
