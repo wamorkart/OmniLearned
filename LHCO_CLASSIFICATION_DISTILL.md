@@ -12,8 +12,8 @@ The KD already happened at pretraining time (see
 `best_model_distill_pretrain_s_scratch_a00_b10_T4_full500_reg52_v2.pt`).
 That checkpoint is not yet task-specific. Adapting it to LHCO is a plain
 **fine-tune**, exactly like
-`fine_tune_top_distill_pretrain_full500_reg52_a00_b10_v2.sh` adapted it to
-top-tagging — just swap the dataset. No `--distill` / teacher-logits
+`scripts/configs/train/ft_top_pretrain_full500_reg52_a00_b10_v2.sh` adapts it
+to top-tagging — just swap the dataset. No `--distill` / teacher-logits
 machinery is needed at this stage.
 
 No code changes are needed either way. The `custom` dataset slot already
@@ -46,9 +46,9 @@ to build the index file.
 
 ## 2. Fine-tune the distilled checkpoint as an LHCO classifier
 
-Direct adaptation of `fine_tune_top_distill_pretrain_full500_reg52_a00_b10_v2.sh`
-(repo root) — same `--pretrain-tag`/`--fine-tune` pattern, `--dataset custom`
-instead of `--dataset top`, no `--distill*` flags:
+Direct adaptation of `scripts/configs/train/ft_top_pretrain_full500_reg52_a00_b10_v2.sh`
+(run via `scripts/run_train.sh`) — same `FINETUNE=1`/`PRETRAIN_TAG` pattern,
+`DATASET=custom` instead of `top`, `DISTILL=0`:
 
 ```bash
 cmd="omnilearned train \
@@ -73,9 +73,9 @@ and `--size` must match that checkpoint's model size.
 
 ## Closest existing template
 
-- `fine_tune_top_distill_pretrain_full500_reg52_a00_b10_v2.sh` (repo root) —
-  copy it, change `--dataset top` → `custom`, adjust `--save-tag` and
-  `--path`.
+- `scripts/configs/train/ft_top_pretrain_full500_reg52_a00_b10_v2.sh` — copy it
+  to a new config, set `DATASET=custom`, adjust `SAVE_TAG`; run with
+  `scripts/run_train.sh <new-config>`.
 
 ## Reminder
 

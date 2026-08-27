@@ -10,6 +10,9 @@
 # allocation. For a walltime-surviving resubmit loop, wrap this in
 # lib/resubmit_loop.sh (or one of the distill_loop_top_*.sh shims).
 #
+# Handles both from-scratch training and --fine-tune runs (set FINETUNE=1 +
+# PRETRAIN_TAG in the config); see configs/train/ft_*.sh.
+#
 # Env vars a caller may override per run: SAVE_TAG ALPHA BETA DISTILL_T.
 #
 # (Not named train.sh: scripts/train.sh is an unrelated pre-existing
@@ -43,18 +46,24 @@ done
 args=(
     -o "$OUTDIR"
     --save-tag "$SAVE_TAG"
+)
+[ "$FINETUNE" = 1 ]           && args+=(--fine-tune --pretrain-tag "$PRETRAIN_TAG")
+args+=(
     --dataset "$DATASET" --mode "$MODE" --num-classes "$NUM_CLASSES"
     --path "$DATA_PATH"
 )
 [ -n "$ARCH" ]                && args+=(--arch "$ARCH")
 args+=(--size "$SIZE")
+[ -n "$NUM_FEAT" ]            && args+=(--num-feat "$NUM_FEAT")
 [ "$INTERACTION" = 1 ]        && args+=(--interaction)
 [ "$LOCAL_INTERACTION" = 1 ]  && args+=(--local-interaction)
-args+=(
-    --batch "$BATCH" --iterations "$ITERATIONS" --epoch "$EPOCH"
-    --lr "$LR" --wd "$WD"
-    --num-workers "$NUM_WORKERS"
-)
+args+=(--batch "$BATCH")
+[ -n "$ITERATIONS" ]         && args+=(--iterations "$ITERATIONS")
+args+=(--epoch "$EPOCH" --lr "$LR")
+[ -n "$LR_FACTOR" ]          && args+=(--lr-factor "$LR_FACTOR")
+args+=(--wd "$WD")
+[ -n "$WARMUP_EPOCH" ]       && args+=(--warmup-epoch "$WARMUP_EPOCH")
+args+=(--num-workers "$NUM_WORKERS")
 if [ "$DISTILL" = 1 ]; then
     args+=(
         --distill

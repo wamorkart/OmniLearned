@@ -16,15 +16,23 @@ NUM_CLASSES=2
 
 ARCH=                       # empty -> PET2 default; else: deep-sets | mlp
 SIZE=small
+NUM_FEAT=                    # empty -> omnilearned default (4); jetclass 9, dctr 5
 INTERACTION=1
 LOCAL_INTERACTION=1
 
 BATCH=128
-ITERATIONS=1000
+ITERATIONS=1000             # empty -> omit --iterations
 EPOCH=50
 LR=5e-4
+LR_FACTOR=                  # empty -> omit --lr-factor (fine-tune uses it)
+WARMUP_EPOCH=               # empty -> omit --warmup-epoch
 WD=0.5
 NUM_WORKERS=4
+
+# Fine-tune from a pretrained/distilled checkpoint instead of training from
+# scratch. FINETUNE=1 adds --fine-tune --pretrain-tag $PRETRAIN_TAG.
+FINETUNE=0
+PRETRAIN_TAG=
 
 DISTILL=1
 ALPHA=0.5

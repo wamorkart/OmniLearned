@@ -233,11 +233,12 @@ Variants:
 - `distill_train_jetclass*.sh`, `distill_train_jetclass_a00.sh`,
   `distill_train_jetclass_pretrain_l.sh` — JetClass-specific analogues (student
   init variants: scratch vs. init from a pretrain checkpoint).
-- `fine_tune_*` scripts (`fine_tune_jetclass.sh`,
-  `fine_tune_top_distill_pretrain.sh`) — **not KD**: plain `--fine-tune` runs
-  (CE-only) either as a baseline, or to fine-tune a KD-pretrained checkpoint
-  (e.g. `distill_pretrain_s_scratch_a05_T4` warm-started, then fine-tuned CE-only
-  on top tagging) — the "pretrain-KD-init" arm of the init ablation.
+- `run_train.sh ft_*` (configs `configs/train/ft_*.sh`) — **not KD**: plain
+  `--fine-tune` runs (`FINETUNE=1 DISTILL=0 PRETRAIN_TAG=…`), either a CE-only
+  baseline or a fine-tune of a KD-pretrained checkpoint (e.g.
+  `distill_pretrain_s_scratch_a05_T4` warm-started, then fine-tuned on top
+  tagging) — the "pretrain-KD-init" arm of the init ablation. Replaces the old
+  per-run `fine_tune_{jetclass,top_distill_pretrain*,dctr_*}.sh`.
 
 ```bash
 # Run a driver directly inside an existing allocation (e.g. after salloc):

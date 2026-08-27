@@ -1,6 +1,6 @@
 #!/bin/bash
 # Continuous loop for fine-tuning the 52-GPU KD-pretrained small student on top tagging.
-# Wraps fine_tune_top_distill_pretrain_full500_reg52.sh with salloc auto-resubmit on timeout.
+# Wraps run_train.sh + configs/train/ft_top_pretrain_full500_reg52.sh with salloc auto-resubmit on timeout.
 #
 # Run in a screen session:
 #   screen -S top_ft_pretrain_full500_reg52 bash distill_loop_top_pretrain_full500_reg52_finetune.sh
@@ -31,7 +31,7 @@ while [ "$LOOP" -lt "$MAX_LOOPS" ]; do
         --ntasks-per-node 4 \
         --gpus-per-node 4 \
         -A m3246 \
-        bash "$SCRIPT_DIR/fine_tune_top_distill_pretrain_full500_reg52.sh" \
+        bash "$SCRIPT_DIR/run_train.sh" ft_top_pretrain_full500_reg52 \
         2>&1 | tee "$LOG_FILE"
     EXIT="${PIPESTATUS[0]}"
 

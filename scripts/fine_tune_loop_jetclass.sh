@@ -34,7 +34,7 @@ while [ "$LOOP" -lt "$MAX_LOOPS" ]; do
         --ntasks-per-node 4 \
         --gpus-per-node 4 \
         -A m3246 \
-        bash "$SCRIPT_DIR/fine_tune_jetclass.sh" \
+        bash "$SCRIPT_DIR/run_train.sh" ft_jetclass \
         2>&1 | tee "$LOG_FILE"
     EXIT="${PIPESTATUS[0]}"
 

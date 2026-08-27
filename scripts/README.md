@@ -141,6 +141,13 @@ top_small_a05`. Anything else must live in a config.
 `configs/eval/` + `run_eval.sh` work the same way; its call-time whitelist
 is `SAVE_TAG DATASET_TYPE OUTDIR`.
 
+**Fine-tune runs** use the same `run_train.sh` — a config sets `FINETUNE=1
+DISTILL=0 PRETRAIN_TAG=<tag>` (plus `LR_FACTOR`, `WARMUP_EPOCH`, `NUM_FEAT`
+as needed). See `configs/train/ft_*.sh`, which replace the old per-run
+`fine_tune_{top_distill_pretrain*,jetclass,dctr_*}.sh`. Their resubmit-loop
+wrappers (`distill_loop_{top_pretrain,dctr_*}_finetune.sh`,
+`fine_tune_loop_jetclass.sh`) now call `run_train.sh ft_<config>`.
+
 The per-config `distill_loop_top_*.sh` shims are gone, folded into
 `distill_loop_top.sh <config>`. Still their own scripts: the arg-taking
 `distill_loop_top_{rep,micro_rep,micro_noint_rep,sweep}.sh`. `distill_queue_*`
@@ -168,8 +175,9 @@ tables), `evaluate_top_distill_deepsets.sh` + `run_eval_deepsets.sh`,
 `evaluate_top_for_distill.sh`, `evaluate_train.sh`, `evaluate.sh`.
 
 Not yet migrated: `distill_train_top_deepsets.sh` (already config-driven via
-its own `CONFIG` table), `distill_loop_top_T_sweep*.sh`, and the
-`fine_tune_*` / `jetclass` / `dctr` training families.
+its own `CONFIG` table), `distill_loop_top_T_sweep*.sh`, the JetClass/pretrain
+`distill_{train,loop}_{jetclass,pretrain}*.sh` families, and the cosmology
+`fine_tune_{camels,quijote}.sh` / `fine_tune_qg_pretrain_l.sh` outliers.
 
 ## `export_ddp.sh`
 
