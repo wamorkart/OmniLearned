@@ -1,0 +1,372 @@
+% Requires in the preamble:
+%   \usepackage{booktabs}
+
+\subsection{Teacher Model}
+\label{sec:teacher}
+
+\begin{itemize}
+    \item Teacher is \textbf{PET2}, the OmniLearned backbone: local $k$NN
+    interaction blocks ($K{=}15$) + global multi-head self-attention over
+    per-particle tokens.
+    \item \emph{Large} config: 28 transformer blocks, 4 local-interaction
+    heads, \texttt{base\_dim}$=1024$, 32 attention heads.
+    \item Fine-tuned directly on top tagging, checkpoint tag
+    \texttt{fine\_tune\_top\_l}.
+    \item Frozen for every KD run in this report, including the DeepSets
+    student.
+\end{itemize}
+
+\subsection{Distillation Pipeline}
+\label{sec:pipeline}
+
+\begin{itemize}
+    \item Teacher logits computed once, offline, on train/val splits
+    (\texttt{omnilearned evaluate}), cached as per-event \texttt{.npz}.
+    \item Converted to companion H5 files aligned to train/val events
+    (\texttt{build\_teacher\_h5.py}); training reads cached logits, never
+    re-runs the teacher.
+    \item Student trained with
+    $\mathcal{L}=\alpha\mathcal{L}_{\mathrm{CE}}+\beta T^2 D_{\mathrm{KL}}(\hat y/T\,\|\,\hat y_{\mathrm{teacher}}/T)$,
+    default $\alpha{=}0.5,\beta{=}0.5,T{=}4$.
+    \item Evaluated on the held-out 404{,}000-event test split
+    (\texttt{omnilearned evaluate --arch deep-sets}): Accuracy, AUC,
+    $1/\mathrm{FPR}_{50\%}$, $1/\mathrm{FPR}_{30\%}$.
+\end{itemize}
+
+\subsection{DeepSets Student Architecture}
+\label{sec:deepsets-arch}
+
+\begin{itemize}
+    \item Permutation-invariant Deep Sets classifier,
+    $f(X)=\rho(\operatorname{pool}_{x\in X}\phi(x))$: per-particle embedding
+    $\phi$ (\texttt{DeepSetsBody}) + global classifier $\rho$
+    (\texttt{DeepSetsHead}), masked mean-pooling as the only
+    order-discarding op.
+    \item Input: 4 raw kinematic features/particle, zero-padded, mask
+    $m_n=\mathbb{1}[x_{n,2}\neq0]$; norm is \texttt{DynamicTanh}
+    ($\tanh(\alpha x)\odot\gamma$), activation GELU.
+    \item Three original size presets (small/medium/large), later extended
+    below ``small'' (Section~\ref{sec:deepsets-size-scan}).
+    \item \texttt{DynamicTanh} and GELU are non-standard for hls4ml/QONNX;
+    a hardware variant would swap in BatchNorm + ReLU.
+\end{itemize}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        Size & $d$ (\texttt{base\_dim}) & $L_\phi$ & $L_\rho$ & Parameters \\
+        \midrule
+        small  & 128 & 3 & 2 & $\sim$0.30M \\
+        medium & 256 & 4 & 3 & -- \\
+        large  & 512 & 5 & 4 & -- \\
+        \bottomrule
+    \end{tabular}
+    \caption{DeepSets student size presets (original ladder).}
+    \label{tab:deepsets-sizes}
+\end{table}
+
+\subsection{Top-Tagging Distillation Results}
+\label{sec:deepsets-mlp-comparison}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lccccc}
+        \toprule
+        Model & Params & Acc & AUC & $1/\mathrm{FPR}_{50\%}$ & $1/\mathrm{FPR}_{30\%}$ \\
+        \midrule
+        Teacher-L (large, CE)             & 373.687M & 94.44\% & 0.9880 & 645.0 & 3365.0 \\
+        Teacher-S (small, CE)             & 2.709M & 94.38\% & 0.9875 & 577.0 & 2556.0 \\
+        Micro-KD (w/ interaction)         & 0.549M & 94.34\% & 0.9876 & 605.0 & 3021.0 \\
+        Small-KD                          & 2.709M & 94.32\% & 0.9875 & 580.0 & 2804.0 \\
+        Micro-KD (no interaction)         & 0.548M & 94.32\% & 0.9874 & 580.9 & 2788.3 \\
+        Micro-CE                          & 0.549M & 94.12\% & 0.9863 & 442.0 & 1639.0 \\
+        \textbf{DeepSets-KD}              & \textbf{0.299M} & \textbf{93.30\%} & \textbf{0.9828} & \textbf{283.2} & \textbf{1121.7} \\
+        MLP-KD (failed run)               & 0.0005M & 58.81\% & 0.6264 & 2.9 & 5.4 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Top-tagging test-set performance (404{,}000 events). KD runs
+    use $\alpha=0.5$, $\beta=0.5$, $T=4$ unless noted.}
+    \label{tab:deepsets-mlp-comparison}
+\end{table}
+
+\begin{itemize}
+    \item DeepSets is the first fully attention-free student in the
+    comparison; every other entry retains PET2's interaction/attention
+    mechanism.
+    \item Trails the CE-only baselines by $\sim$1 accuracy point and
+    roughly half the background rejection (1/FPR) -- a real but
+    non-catastrophic cost of removing attention.
+    \item MLP-KD failed to train (near-random) -- included for
+    completeness, not as a meaningful comparison point.
+    \item DeepSets is the reference point all later ablations
+    (Sections~\ref{sec:deepsets-ablations}--\ref{sec:deepsets-qat}) build
+    on.
+\end{itemize}
+
+\subsection{DeepSets Ablations: Pure KD and Weight Decay}
+\label{sec:deepsets-ablations}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Model & Acc & AUC & $1/\mathrm{FPR}_{50\%}$ & $1/\mathrm{FPR}_{30\%}$ \\
+        \midrule
+        \textbf{DeepSets-KD} ($\alpha{=}0.5$, wd$=0.5$) & \textbf{93.30\%} & \textbf{0.9828} & \textbf{283.2} & \textbf{1121.7} \\
+        DeepSets-KD, pure KD ($\alpha{=}0$, wd$=0.5$)   & 92.95\% & 0.9806 & 223.1 & 817.5 \\
+        DeepSets-KD, low wd ($\alpha{=}0.5$, wd$=0.05$) & 92.83\% & 0.9799 & 210.5 & 736.9 \\
+        \bottomrule
+    \end{tabular}
+    \caption{DeepSets ablations, same 404{,}000-event test split.}
+    \label{tab:deepsets-ablations}
+\end{table}
+
+\begin{itemize}
+    \item Pure KD ($\alpha{=}0$) \emph{hurts} the DeepSets student --
+    opposite of the pattern seen for PET2-architecture students.
+    \item Lower weight decay (0.05) also hurts, contradicting the
+    over-regularization hypothesis.
+    \item Both ablations underperform the mixed-loss, wd$=0.5$ baseline on
+    every metric.
+    \item \texttt{a05\_T4} (mixed CE+KD, wd$=0.5$) remains the reference
+    checkpoint for downstream FPGA/quantization work.
+\end{itemize}
+
+\subsection{DeepSets Ablations: Teacher Capacity and the No-KD Control}
+\label{sec:deepsets-teacher-ablation}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Model & Acc & AUC & $1/\mathrm{FPR}_{50\%}$ & $1/\mathrm{FPR}_{30\%}$ \\
+        \midrule
+        \textbf{DeepSets-KD} (large teacher, $\alpha{=}0.5$) & \textbf{93.30\%} & \textbf{0.9828} & \textbf{283.2} & \textbf{1121.7} \\
+        DeepSets-KD (small teacher, $\alpha{=}0.5$)          & 93.24\% & 0.9824 & 263.3 & 1014.6 \\
+        DeepSets, CE-only (no KD)                             & 92.83\% & 0.9799 & 201.7 & 677.6 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Teacher-choice and no-KD-control ablations, same test split.}
+    \label{tab:deepsets-teacher-ablation}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{KD does help}: CE-only is the worst non-degenerate
+    DeepSets result, clearly behind both KD variants on rejection power.
+    \item \textbf{Teacher capacity barely matters}: a $138\times$ smaller
+    teacher (nearly equal own accuracy) costs only 0.06 accuracy points.
+    \item Bottleneck is the DeepSets student's own $\sim$0.30M-param
+    capacity, not teacher size -- the small teacher is a nearly-free KD
+    substitute going forward.
+    \item Two independent-seed replicates each of CE-only and small-teacher
+    were in flight at time of writing; treat sub-point differences above as
+    provisional.
+\end{itemize}
+
+\subsection{Student Size Scan: Toward DistillNet Parity}
+\label{sec:deepsets-size-scan}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Size & $d$ (\texttt{base\_dim}) & $L_\phi$ & $L_\rho$ & Parameters \\
+        \midrule
+        small (original)  & 128 & 3 & 2 & 298{,}887 \\
+        nano               & 64  & 3 & 2 &  75{,}719 \\
+        micro              & 32  & 3 & 2 &  19{,}431 \\
+        \textbf{distillnet} & \textbf{32} & \textbf{2} & \textbf{1} & \textbf{10{,}981} \\
+        tiny               & 24  & 2 & 1 &   6{,}317 \\
+        (unnamed floor)    & 16  & 2 & 1 &   2{,}933 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Extended DeepSets size ladder.}
+    \label{tab:deepsets-size-ladder}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Model (params) & Acc & AUC & $1/\mathrm{FPR}_{50\%}$ & $1/\mathrm{FPR}_{30\%}$ \\
+        \midrule
+        DeepSets-KD, small (298{,}887) & 93.30\% & 0.9828 & 283.2 & 1121.7 \\
+        DeepSets-KD, distillnet (10{,}981) & 92.85\% & 0.9800 & 199.1 & 747.8 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Width-scaling result: small vs.\ distillnet-sized student.}
+    \label{tab:deepsets-distillnet-result}
+\end{table}
+
+\begin{itemize}
+    \item Ladder extended below ``small'' to reach DistillNet-paper
+    parity ($\sim$10.5k params).
+    \item A $27\times$ parameter cut (298{,}887 $\to$ 10{,}981) costs only
+    0.45 accuracy points -- less than expected.
+    \item Single run, no variance estimate yet.
+    \item nano/micro/tiny sizes are defined and forward cleanly but remain
+    untrained -- natural next step before fixing a final FPGA target size.
+\end{itemize}
+
+\subsection{Inference Cost and Latency}
+\label{sec:inference-cost}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lccc}
+        \toprule
+        Model & Params & FLOPs @ median $N{=}47$ & GPU / CPU latency (ms) \\
+        \midrule
+        Teacher-L (large, CE)  & 373.7M & 75.9G (33.5G--182.0G)   & $27.7\pm3.8$ / $560.0\pm190.0$ \\
+        Teacher-S (small, CE)  & 2.71M  & 550.8M (238.3M--1361.9M) & $10.4\pm0.7$ / $19.6\pm5.7$ \\
+        \textbf{DeepSets-KD}   & \textbf{0.30M} & \textbf{15.8M (6.9M--37.9M)} & $\mathbf{1.28\pm0.10}$ / $\mathbf{1.18\pm0.16}$ \\
+        MLP-KD (failed run)    & $<$0.001M & $\approx$0 & $0.31\pm0.04$ / $0.12\pm0.02$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Real inference cost, averaged over 100 test-set jets ($N=8$--114,
+    median 47), GPU = A100, CPU = 4 threads.}
+    \label{tab:inference-cost}
+\end{table}
+
+\begin{itemize}
+    \item DeepSets is $\sim$35$\times$ fewer FLOPs than the small teacher
+    and $\sim$4800$\times$ fewer than the large teacher, for
+    $\sim$1--1.1 accuracy points.
+    \item FLOPs/latency measured on 100 real jets at their true $N$, not a
+    single unrepresentative event.
+    \item Large teacher's CPU latency has $\pm$34\% std (N-dependent
+    $k$NN/attention cost); DeepSets is far tighter ($\pm$13\% CPU, $\pm$8\%
+    GPU).
+    \item Predictable, near-constant latency matters as much as mean
+    latency for a fixed-latency FPGA trigger budget.
+\end{itemize}
+
+\subsection{Post-Training Quantization (PTQ)}
+\label{sec:deepsets-ptq}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcc}
+        \toprule
+        Config & distillnet (10{,}981) & small \texttt{a05\_T4} (298{,}887) \\
+        \midrule
+        float32 (no quantization) & 92.85\% / 0.9800 & 93.30\% / 0.9828 \\
+        8-bit PTQ  & 82.90\% / 0.9151 ($-$9.95 pt) & 89.70\% / 0.9613 ($-$3.60 pt) \\
+        6-bit PTQ  & 79.64\% / 0.8771 & 86.98\% / 0.9358 \\
+        4-bit PTQ  & 49.19\% / 0.5123 (random) & 51.39\% / 0.5261 (random) \\
+        \bottomrule
+    \end{tabular}
+    \caption{Post-training quantization (percentile-calibrated), accuracy /
+    AUC.}
+    \label{tab:deepsets-ptq}
+\end{table}
+
+\begin{itemize}
+    \item Naive min/max calibration fails badly (one extreme-$p_T$ jet
+    blows up the scale); percentile clipping (0.1--99.9\%) recovers
+    $\sim$5 accuracy points at 8-bit.
+    \item Even so, 8-bit PTQ still costs 3.6--10 accuracy points depending
+    on model size.
+    \item 4-bit PTQ collapses to random for both sizes.
+    \item \textbf{Plain PTQ is not viable at any useful bit width} --
+    quantization-aware training is necessary, not optional.
+\end{itemize}
+
+\subsection{Quantization-Aware Training (QAT)}
+\label{sec:deepsets-qat}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Config & Acc & AUC & $1/\mathrm{FPR}_{50\%}$ & $1/\mathrm{FPR}_{30\%}$ \\
+        \midrule
+        float32 baseline (distillnet) & 92.85\% & 0.9800 & 199.1 & 747.8 \\
+        8-bit PTQ (percentile)        & 82.90\% & 0.9151 & 19.5  & 45.2  \\
+        \textbf{8-bit QAT}            & \textbf{92.58\%} & \textbf{0.9785} & \textbf{178.1} & \textbf{698.7} \\
+        \bottomrule
+    \end{tabular}
+    \caption{8-bit QAT vs.\ PTQ vs.\ float32 baseline, distillnet student.}
+    \label{tab:deepsets-qat}
+\end{table}
+
+\begin{itemize}
+    \item Brevitas \texttt{QuantLinear} layers warm-started from the
+    trained float32 weights (not random init), same KD loss/teacher kept
+    during fine-tuning.
+    \item 8-bit QAT closes almost the entire PTQ gap: accuracy drop shrinks
+    from 10.0 points to 0.27 points.
+    \item Model is not fundamentally quantization-hostile -- it just needs
+    weights adapted to the quantization grid via fine-tuning.
+    \item No FPGA synthesis run yet; next step is QONNX export (Brevitas)
+    $\to$ \texttt{hls4ml} for real LUT/DSP/BRAM/latency numbers.
+\end{itemize}
+
+\subsection{Comparison Against L-GATr (arXiv:2608.02735)}
+\label{sec:lgatr-comparison}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lccccc}
+        \toprule
+        Model & Acc & AUC & $1/\mathrm{FPR}_{50\%}$ & $1/\mathrm{FPR}_{30\%}$ & Pretrain \\
+        \midrule
+        Transformer (their baseline, scratch) & 93.93\% & 0.9855 & 389 & 1613 & none \\
+        L-GATr (Lorentz-equiv., scratch) & 94.23\% & 0.9870 & 540 & 2240 & none \\
+        L-GATr-slim (scratch) & 94.20\% & 0.9869 & 546 & 2264 & none \\
+        \textbf{Small-KD (ours, mixed, $\alpha{=}0.5$)} & \textbf{94.32\%} & \textbf{0.9875} & \textbf{580} & \textbf{2804} & none \\
+        \textbf{Small-KD (ours, pure, $\alpha{=}0$)} & \textbf{94.43\%} & \textbf{0.9879} & \textbf{621} & \textbf{3205} & none \\
+        L-GATr-slim, f.t.\ (theirs, pretrained) & 94.42\% & 0.9879 & 655 & 2927 & 100M JetClass \\
+        L-GATr-slim, f.t.\ 48M (their headline) & 94.46\% & 0.9880 & 693 & 3062 & 100M JetClass \\
+        \bottomrule
+    \end{tabular}
+    \caption{PET2-small KD students vs.\ L-GATr variants, classic top-tagging
+    test set.}
+    \label{tab:lgatr-comparison}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Efficiency & Teacher & CE-only & Pure KD & Mixed KD \\
+        \midrule
+        0.5 & 1.000 & 1.000 & 1.000 & 1.000 \\
+        0.4 & 1.956 & 2.011 & 2.083 & 1.977 \\
+        \textbf{0.3} & \textbf{5.217} & \textbf{4.430} & \textbf{5.159} & \textbf{4.833} \\
+        0.2 & 12.038 & 12.069 & 12.037 & 15.130 \\
+        \bottomrule
+    \end{tabular}
+    \caption{$1/\mathrm{FPR}_{\text{eff}} \div 1/\mathrm{FPR}_{50\%}$
+    rejection-curve shape.}
+    \label{tab:lgatr-roc-shape}
+\end{table}
+
+\begin{itemize}
+    \item Our \texttt{fine\_tune\_top\_l} teacher reproduces the paper's
+    published ``OmniLearned-L'' reference numbers closely -- a clean
+    external cross-check.
+    \item Pure-KD small student (2.71M params, no pretraining) beats every
+    from-scratch model in their comparison, including L-GATr, and beats
+    their 48M-param, 100M-jet-pretrained headline result on
+    $1/\mathrm{FPR}_{30\%}$.
+    \item Pure KD inherits the teacher's unusually steep rejection-curve
+    tail almost intact; mixed KD only partially does -- this is why we win
+    at 30\% efficiency but lose at 50\% (where their equivariance prior
+    wins instead).
+    \item Our DeepSets/FPGA students fall outside this paper's comparable
+    parameter range, and neither this paper nor its quantization companion
+    reports real FPGA synthesis numbers -- same gap our planned
+    \texttt{hls4ml} step would fill.
+\end{itemize}
