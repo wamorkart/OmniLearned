@@ -23,5 +23,5 @@ module load conda
 conda activate energyflow
 
 cd /global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned
-python -u preprocess_omnifold.py \
+python -u tools/preprocess/preprocess_omnifold.py \
   --folder /pscratch/sd/t/twamorka/unfolding --sample herwig --num-data -1 --npoints 101

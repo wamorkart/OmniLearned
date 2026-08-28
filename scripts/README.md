@@ -94,7 +94,7 @@ PET2-small, KD α=β=0.5, T=4). All commands run from the **repo root**.
    ```
    salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 \
           --gpus-per-node 4 -A m3246 bash scripts/run_eval.sh top_distill
-   python compute_metrics_top.py \
+   python tools/metrics/compute_metrics_top.py \
        --indir /pscratch/sd/t/twamorka/omnilearned/eval/top_distill/ \
        --tag distill_top_small_scratch_a05_T4
    ```

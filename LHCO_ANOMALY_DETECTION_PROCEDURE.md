@@ -48,7 +48,7 @@ top-tagging fine-tune, just swap the dataset. No new distillation step.
      --size small --interaction --local-interaction --num-classes 2
    ```
 7. Compute metrics (accuracy, AUC, $1/\mathrm{FPR}$ at fixed signal efficiency)
-   from the eval `.npz` outputs — same script pattern as `compute_metrics_top.py`,
+   from the eval `.npz` outputs — same script pattern as `tools/metrics/compute_metrics_top.py`,
    adapted for the LHCO label convention.
 
 ## Pipeline B (fine-tune → distill) on LHCO
@@ -77,7 +77,7 @@ teacher fine-tuned on LHCO first, since none exists yet.
 2. Evaluate the teacher standalone on the LHCO test split — sanity-check its
    accuracy/AUC before trusting it as a KD source.
 3. Generate teacher logits for the LHCO train/val split (companion `.h5` files
-   via `build_teacher_h5.py`, or merge logits directly into the LHCO `custom`
+   via `tools/preprocess/build_teacher_h5.py`, or merge logits directly into the LHCO `custom`
    files) so the student's `--distill` path has something to read.
 4. Distill a small student **directly from that fine-tuned teacher, on the same
    task** — start with pure KD ($\alpha=0,\beta=1,T=4$), the config that won

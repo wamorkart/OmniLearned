@@ -24,7 +24,7 @@ export PATH=/global/homes/t/twamorka/omnilearned-clean/env/bin:$PATH
 
 REPO=/global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned
 echo "=== $(date '+%F %T')  build_teacher_h5 $DATASET/$SPLIT (tag=$TAG) ==="
-python3 "$REPO/build_teacher_h5.py" \
+python3 "$REPO/tools/preprocess/build_teacher_h5.py" \
     --npz-dir "$NPZ_DIR" \
     --tag "$TAG" \
     --data-path "$DATA_PATH" \

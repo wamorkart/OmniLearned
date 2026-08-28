@@ -120,7 +120,7 @@ def train(
         help="Also match the student's body-token embedding (outputs['x_body']) "
              "against a pre-saved teacher embedding via MSE (CLS-MSE feature "
              "distillation). Requires --arch pet2 and teacher companion files "
-             "built with `build_teacher_h5.py --include-cls-embed`.",
+             "built with `tools/preprocess/build_teacher_h5.py --include-cls-embed`.",
     ),
     distill_gamma: float = typer.Option(
         0.5, help="Weight for the CLS-MSE feature distillation term"
@@ -212,7 +212,7 @@ def unfold(
     path: str = typer.Option(
         "/pscratch/sd/t/twamorka/unfolding",
         help="Directory containing train_pythia.h5 / train_herwig.h5 "
-        "(see preprocess_omnifold.py)",
+        "(see tools/preprocess/preprocess_omnifold.py)",
     ),
     wandb: bool = typer.Option(False, help="use wandb logging"),
     fine_tune: bool = typer.Option(
@@ -220,7 +220,7 @@ def unfold(
     ),
     num_feat: int = typer.Option(
         13, help="Number of input per-particle features (13 for the OmniLearn "
-        "preprocess_omnifold.py schema)"
+        "tools/preprocess/preprocess_omnifold.py schema)"
     ),
     size: str = typer.Option("small", "--size", "-s", help="Model size"),
     interaction: bool = typer.Option(False, help="Use interaction matrix"),

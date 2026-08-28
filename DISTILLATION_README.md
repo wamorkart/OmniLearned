@@ -52,9 +52,9 @@ teacher checkpoint
       ▼
 sharded teacher logits (outputs_<tag>_<dataset>_<split>_chunk<K>of<N>_rank<r>.npz)
       │  checks/validate_chunks.py, checks/sanity_logits.py   (sanity gate)
-      │  concat_logits.py                                     (optional: merge to one .npz/split)
+      │  tools/preprocess/concat_logits.py                                     (optional: merge to one .npz/split)
       ▼
-build_teacher_h5.py
+tools/preprocess/build_teacher_h5.py
       ▼
 per-source-file companion .h5  (<companion_dir>/<dataset>/<split>/<stem>.h5, teacher_logits[N_f, C])
       │  distill_smoke.sh                                      (1-2 iter smoke test)
@@ -66,7 +66,7 @@ omnilearned train --distill ...  (distill_train*.sh)
 distilled student checkpoint (best_model_<save-tag>.pt)
       │  omnilearned evaluate  (evaluate_*_distill.sh)
       ▼
-compute_metrics_top.py / compute_metrics_jetclass.py            (AUC, accuracy, 1/FPR)
+tools/metrics/compute_metrics_top.py / tools/metrics/compute_metrics_jetclass.py            (AUC, accuracy, 1/FPR)
 ```
 
 ### 1. Generate teacher logits (`evaluate*`)
@@ -118,9 +118,9 @@ DATA_PATH=/global/cfs/cdirs/m4567/www/,SIZE=large \
 
 - `checks/validate_chunks.py` — read-only pass over one dataset/split's chunk
   files: confirms the expected rank count per chunk, consistent keys/shapes
-  across files, no NaN/Inf, and estimates the peak RAM `concat_logits.py` would
+  across files, no NaN/Inf, and estimates the peak RAM `tools/preprocess/concat_logits.py` would
   need for a full in-RAM merge (informational — the actual pipeline no longer
-  needs that merge for training, only `build_teacher_h5.py` does, and it streams).
+  needs that merge for training, only `tools/preprocess/build_teacher_h5.py` does, and it streams).
 - `checks/sanity_logits.py` — semantic check on a sample of files: confirms
   `softmax(logits)` reproduces the saved `prediction`/`event_prediction` arrays,
   and that the teacher's predicted classes aren't collapsed onto one class.
@@ -140,22 +140,22 @@ python checks/validate_chunks.py
 python checks/sanity_logits.py
 ```
 
-### 3. `concat_logits.py` (optional merge)
+### 3. `tools/preprocess/concat_logits.py` (optional merge)
 
 Groups the per-chunk/per-rank `.npz` shards by split and concatenates them into
 one `<tag>_<dataset>_<split>.npz`. Useful for quick sanity checks (e.g. loading
 one file to spot-check teacher accuracy) but **not** required for training —
-`build_teacher_h5.py` reads the raw sharded files directly, streaming, so it
+`tools/preprocess/build_teacher_h5.py` reads the raw sharded files directly, streaming, so it
 never needs the concatenated array in RAM.
 
 ```bash
-python concat_logits.py \
+python tools/preprocess/concat_logits.py \
   --indir /pscratch/sd/t/twamorka/omnilearned/teacher_logits/TEST \
   --tag pretrain_l --dataset atlas
 # -> pretrain_l_atlas_test.npz (or _train.npz/_val.npz, one per split found)
 ```
 
-### 4. `build_teacher_h5.py` (the key conversion step)
+### 4. `tools/preprocess/build_teacher_h5.py` (the key conversion step)
 
 One-time, per dataset/split: converts the sharded `.npz` teacher logits into the
 lazy companion `.h5` files training actually reads.
@@ -177,7 +177,7 @@ lazy companion `.h5` files training actually reads.
 
 ```bash
 # Top-tagging teacher (2-class), train+val, single dataset:
-python build_teacher_h5.py \
+python tools/preprocess/build_teacher_h5.py \
   --npz-dir /pscratch/sd/t/twamorka/omnilearned/teacher_logits/TEST \
   --tag fine_tune_top_l \
   --data-path /global/cfs/cdirs/m4567/www/ \
@@ -185,7 +185,7 @@ python build_teacher_h5.py \
   --dataset top --split train,val
 
 # Pretrain-head teacher (210-class), all 7 constituents, resumable:
-python build_teacher_h5.py \
+python tools/preprocess/build_teacher_h5.py \
   --npz-dir /pscratch/sd/t/twamorka/omnilearned/teacher_logits/TEST \
   --tag pretrain_l \
   --data-path /global/cfs/cdirs/m4567/www/ \
@@ -333,10 +333,10 @@ checkpoint (`run_eval.sh top_distill`, `run_eval.sh top_distill_pretrain`,
 `outputs_<save-tag>_<dataset>_test_*.npz`.
 
 Then:
-- `compute_metrics_top.py --indir <dir> --tag <save-tag>` — binary top-tagging
+- `tools/metrics/compute_metrics_top.py --indir <dir> --tag <save-tag>` — binary top-tagging
   metrics: accuracy, AUC, and 1/FPR (background rejection) at 50%/30% signal
   efficiency.
-- `compute_metrics_jetclass.py` — JetClass analogue (multi-class).
+- `tools/metrics/compute_metrics_jetclass.py` — JetClass analogue (multi-class).
 
 Compare against two references for every distilled checkpoint: the CE-only
 baseline of the same size (no KD, same data) and the teacher (large model) —
@@ -345,16 +345,16 @@ the whole point is to land closer to the teacher than the baseline does.
 ```bash
 bash run_eval.sh top_distill   # writes outputs_<save-tag>_top_test_rank*.npz
 
-python compute_metrics_top.py \
+python tools/metrics/compute_metrics_top.py \
   --indir /pscratch/sd/t/twamorka/omnilearned/eval/top_distill/ \
   --tag distill_top_small_scratch_a05_T4
 # => Accuracy, AUC, 1/FPR @ 50%/30% signal efficiency
 
-python compute_metrics_jetclass.py \
+python tools/metrics/compute_metrics_jetclass.py \
   --indir /pscratch/sd/t/twamorka/omnilearned/eval/jetclass_distill/ \
   --tag <jetclass-save-tag>
-# or, from a concat_logits.py output:
-python compute_metrics_jetclass.py --file <tag>_jetclass_test.npz
+# or, from a tools/preprocess/concat_logits.py output:
+python tools/metrics/compute_metrics_jetclass.py --file <tag>_jetclass_test.npz
 ```
 
 ## Recipe: launching a brand-new KD line
@@ -363,7 +363,7 @@ python compute_metrics_jetclass.py --file <tag>_jetclass_test.npz
    train on (`evaluate_top_for_distill.sh`-style script, once per split).
 2. `checks/validate_chunks.py` then `checks/sanity_logits.py` on the resulting
    shards — do not proceed if either fails.
-3. `build_teacher_h5.py --npz-dir ... --tag <teacher_tag> --dataset ... --split
+3. `tools/preprocess/build_teacher_h5.py --npz-dir ... --tag <teacher_tag> --dataset ... --split
    train,val --out-dir <companion_root>` — watch for the final "zero NaN"
    summary per dataset/split.
 4. `distill_smoke.sh` inside a small interactive allocation — confirm finite,

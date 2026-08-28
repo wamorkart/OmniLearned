@@ -41,7 +41,7 @@ TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 salloc -A m3246 -C cpu -q interactive -t 01:00:00 --ntasks=1 --cpus-per-task=16 \
     srun --ntasks=1 --cpus-per-task=16 \
     bash -c "export PATH=/global/homes/t/twamorka/omnilearned-clean/env/bin:\$PATH; \
-        python3 '$REPO/build_teacher_h5.py' \
+        python3 '$REPO/tools/preprocess/build_teacher_h5.py' \
             --npz-dir '$NPZ_DIR' \
             --tag '$TAG' \
             --data-path '$DATA_PATH' \

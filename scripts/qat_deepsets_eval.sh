@@ -12,5 +12,5 @@ module load pytorch
 # path, which then crashes looking for RANK. Leaving it unset triggers the
 # correct single-process branch for this single-GPU eval.
 cd /global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned
-/global/homes/t/twamorka/omnilearned-fpga/env/bin/python qat_deepsets_eval.py \
+/global/homes/t/twamorka/omnilearned-fpga/env/bin/python tools/quantize/qat_deepsets_eval.py \
     --tag qat_top_deepsets_distillnet_a05_T4_8bit --size distillnet --bits 8

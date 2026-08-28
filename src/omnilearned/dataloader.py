@@ -321,7 +321,7 @@ class HEPDataset(Dataset):
             and self.teacher_file_paths[file_idx] is not None
         ):
             tf = self._get_teacher_file(file_idx)
-            # Opt-in field (build_teacher_h5.py --include-cls-embed): older
+            # Opt-in field (tools/preprocess/build_teacher_h5.py --include-cls-embed): older
             # companion files built without it simply won't have this key.
             if "teacher_cls_embed" in tf:
                 sample["teacher_cls_embed"] = torch.from_numpy(
@@ -435,7 +435,7 @@ def load_data(
         file_list.extend(map(str, h5_files))  # Convert to string paths
 
         # Companion teacher-logits .h5, one per source file, in the SAME order.
-        # Path mirrors build_teacher_h5.py:
+        # Path mirrors tools/preprocess/build_teacher_h5.py:
         #   <teacher_labels_dir>/<dataset>/<split>/<source_stem>.h5
         # A source file already carrying its own `teacher_logits` dataset (see
         # merge_teacher_logits.py) needs no companion -- HEPDataset reads it
@@ -459,7 +459,7 @@ def load_data(
                 if not companion.is_file():
                     raise FileNotFoundError(
                         f"Missing teacher companion for {names[iname]}/{dataset_type}: "
-                        f"{companion} (run build_teacher_h5.py for this dataset/split, "
+                        f"{companion} (run tools/preprocess/build_teacher_h5.py for this dataset/split, "
                         "or merge_teacher_logits.py to fold it into the source file)"
                     )
                 teacher_file_list.append(str(companion))

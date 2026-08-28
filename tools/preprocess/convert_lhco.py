@@ -49,7 +49,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT_DIR = Path("/global/cfs/cdirs/m3246/mbenyas/OmniLearn/LHCO")
 DEFAULT_OUT_DIR = REPO_ROOT / "LHCO"
 

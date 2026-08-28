@@ -61,7 +61,7 @@ for i in "${!WORK[@]}"; do
     # salloc holds one interactive job for just this pair, then releases it.
     if salloc "${SALLOC_OPTS[@]}" srun --ntasks=1 --cpus-per-task=16 \
             bash -c "export PATH=/global/homes/t/twamorka/omnilearned-clean/env/bin:\$PATH; \
-                python3 '$REPO/build_teacher_h5.py' \
+                python3 '$REPO/tools/preprocess/build_teacher_h5.py' \
                     --npz-dir '$NPZ_DIR' \
                     --tag '$TAG' \
                     --data-path '$DATA_PATH' \

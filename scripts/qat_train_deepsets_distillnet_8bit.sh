@@ -39,7 +39,7 @@ export NCCL_TIMEOUT=600000
 export NCCL_DEBUG=WARN
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 
-cmd="/global/homes/t/twamorka/omnilearned-fpga/env/bin/python qat_deepsets.py \
+cmd="/global/homes/t/twamorka/omnilearned-fpga/env/bin/python tools/quantize/qat_deepsets.py \
   --tag distill_top_deepsets_distillnet_scratch_a05_T4 \
   --size distillnet --bits 8 \
   --save-tag qat_top_deepsets_distillnet_a05_T4_8bit \

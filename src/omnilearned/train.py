@@ -192,7 +192,7 @@ def train_step(
                         raise ValueError(
                             "Distillation with --distill-cls enabled but no "
                             "teacher_cls_embed in batch. Check that "
-                            "build_teacher_h5.py was run with --include-cls-embed "
+                            "tools/preprocess/build_teacher_h5.py was run with --include-cls-embed "
                             "and --teacher_labels_dir points at those companions."
                         )
                     student_embed = outputs["x_body"][

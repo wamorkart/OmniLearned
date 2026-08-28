@@ -33,7 +33,7 @@ Place files under `<path>/custom/{train,test,val}/`. Each `.h5` needs:
 
 You'll need a `preprocess_lhco.py` to convert the raw LHCO R&D delphes h5
 (flat px/py/pz/E constituents) into this schema — nothing in the repo does
-this yet. `preprocess_omnifold.py` (repo root) is a reasonable structural
+this yet. `tools/preprocess/preprocess_omnifold.py` is a reasonable structural
 template, even though it targets a different (unfold) schema.
 
 After preprocessing:

@@ -61,7 +61,7 @@ evaluate_split val
 
 # --- Phase 2: convert NPZ shards -> companion H5 files ---
 echo "=== $(date '+%F %T')  building companion H5 files ==="
-python3 "$REPO/build_teacher_h5.py" \
+python3 "$REPO/tools/preprocess/build_teacher_h5.py" \
     --npz-dir "$NPZ_DIR" \
     --tag "$TAG" \
     --data-path "$DATA_PATH" \

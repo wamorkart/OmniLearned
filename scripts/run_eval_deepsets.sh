@@ -11,7 +11,7 @@
 #   screen -dmS eval_deepsets bash scripts/run_eval_deepsets.sh <save_tag> [size]
 #
 # After it finishes, score it the same way every DeepSets run was scored:
-#   /global/homes/t/twamorka/omnilearned-clean/env/bin/python compute_metrics_top.py \
+#   /global/homes/t/twamorka/omnilearned-clean/env/bin/python tools/metrics/compute_metrics_top.py \
 #       --indir /pscratch/sd/t/twamorka/omnilearned/eval/top_distill_deepsets/ \
 #       --tag <save_tag>
 #

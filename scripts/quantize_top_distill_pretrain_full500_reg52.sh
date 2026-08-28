@@ -10,7 +10,7 @@
 module load conda
 conda activate /global/homes/t/twamorka/omnilearned-clean/env
 
-python quantize_checkpoint.py \
+python tools/quantize/quantize_checkpoint.py \
     --checkpoint-dir /pscratch/sd/t/twamorka/omnilearned/checkpoints/ \
     --tag distill_pretrain_s_scratch_a05_b05_T4_full500_reg52 \
     --dtype bfloat16

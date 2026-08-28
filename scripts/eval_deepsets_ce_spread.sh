@@ -71,7 +71,7 @@ done
 
 echo "[$(date '+%F %T')] All evals attempted. Computing metrics + spread." | tee -a "$LOG_DIR/summary.log"
 
-/global/homes/t/twamorka/omnilearned-clean/env/bin/python "$SCRIPT_DIR/../compute_metrics_top.py" \
+/global/homes/t/twamorka/omnilearned-clean/env/bin/python "$SCRIPT_DIR/../tools/metrics/compute_metrics_top.py" \
     --indir "$OUTPUT_DIR" \
     --tag "${TAGS[0]}" --tag "${TAGS[1]}" --tag "${TAGS[2]}" \
     | tee -a "$LOG_DIR/metrics.log"
