@@ -63,6 +63,8 @@ args+=(
     --num-workers "$NUM_WORKERS"
     --dataset-type "$DATASET_TYPE"
 )
+# shellcheck disable=SC2206
+[ -n "$EXTRA_FLAGS" ] && args+=($EXTRA_FLAGS)
 
 echo "run_eval.sh: config=$CONFIG  save_tag=$SAVE_TAG  out=$OUTDIR"
 echo "+ omnilearned evaluate ${args[*]}"

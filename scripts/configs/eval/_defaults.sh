@@ -23,5 +23,7 @@ NUM_FEAT=                   # empty -> omnilearned default; jetclass needs 9
 BATCH=128
 NUM_WORKERS=4
 
+EXTRA_FLAGS=                # appended verbatim to the CLI, e.g. "--use-pid"
+
 SAVE_TAG=                   # required; every config must set it
 OUTDIR=                     # empty -> $EVAL_ROOT/<config name>/

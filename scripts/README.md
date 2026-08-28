@@ -185,7 +185,19 @@ tables), `evaluate_top_distill_deepsets.sh` + `run_eval_deepsets.sh`,
 
 Not yet migrated: `distill_loop_top_T_sweep*.sh`, the JetClass/pretrain
 `distill_{train,loop}_{jetclass,pretrain}*.sh` families, and the cosmology
-`fine_tune_{camels,quijote}.sh` / `fine_tune_qg_pretrain_l.sh` outliers.
+`fine_tune_{camels,quijote}.sh` outliers.
+
+### quark/gluon (qg) configs
+
+Ported from `distill_dev`:
+
+- `configs/train/ft_qg_pretrain_l.sh` — CE-only fine-tune of `pretrain_l` on qg.
+- `configs/train/qg_a05.sh` — distil that teacher into PET2-small, a=b=0.5/T=4.
+  Needs `companion_fine_tune_qg_pretrain_l` logits built first.
+- `configs/eval/qg_finetune_pretrain_l.sh`, `configs/eval/qg_distill.sh` — test-split evals.
+
+The `distill_dev` `QUANTIZE=int8|bf16` eval knob needs the torchao path in
+`evaluate.py`, not on this branch; omitted for now.
 
 ## `export_ddp.sh`
 
