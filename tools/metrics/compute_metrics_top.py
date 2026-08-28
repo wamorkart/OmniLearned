@@ -14,36 +14,13 @@ Usage:
 """
 
 import argparse
-import glob
-import os
 
 import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve
 
+from _common import SIGNAL_EFFS, load_rank_files, rej_at_eff
+
 SIGNAL_CLASS = 1
-SIGNAL_EFFS = [0.50, 0.30]
-
-
-def load_rank_files(indir, tag):
-    pattern = os.path.join(indir, f"outputs_{tag}_top_test_rank*.npz")
-    paths = sorted(glob.glob(pattern))
-    if not paths:
-        raise FileNotFoundError(f"No files matching: {pattern}")
-    print(f"Found {len(paths)} rank files")
-    preds, labels = [], []
-    for p in paths:
-        z = np.load(p)
-        preds.append(z["prediction"].astype(np.float32))
-        labels.append(z["pid"])
-    return np.concatenate(preds), np.concatenate(labels)
-
-
-def rej_at_eff(fpr, tpr, eff):
-    """Return 1/FPR at the first point where TPR >= eff."""
-    idx = np.searchsorted(tpr, eff)
-    if idx >= len(fpr) or fpr[idx] == 0:
-        return float("inf")
-    return 1.0 / fpr[idx]
 
 
 def compute_and_print(preds, labels, tag=""):
@@ -93,7 +70,7 @@ def main():
 
     results = []
     for tag in args.tag:
-        preds, labels = load_rank_files(args.indir, tag)
+        preds, labels = load_rank_files(args.indir, tag, "top")
         results.append(compute_and_print(preds, labels, tag))
 
     if len(args.tag) > 1:
