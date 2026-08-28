@@ -367,6 +367,16 @@ In the OmniLearned paper we detail the training of OmniLearned to perform anomal
 
 The CATHODE style anomaly detection requires the training of the generative model using the side-bands, generation of background examples in the signal region, and training of the classifier to distinguish data from generated background. All these steps will be detailed soon.
 
+#### LHCO (idealized CWoLa)
+
+`convert_lhco.py` turns the OmniLearn `preprocess_lhco.py` output into two OmniLearned datasets: `lhco_ad_data` (background + injected signal, `pid=0`) and `lhco_ad_bkg` (independent extended background, `pid=1`), each written as `<out-dir>/<dataset>/{train,val,test}/<dataset>.h5`.
+
+```bash
+python convert_lhco.py --input-dir /PATH/TO/preprocess_lhco_output --out-dir /YOUR/DATA/DIR --nsig 1000
+```
+
+Each event is one row: both jets' particles merged with a jet one-hot (`data` shape `(N, 2P, 6)`) and 11 jet-level observables in `global` (read into `cond`). Train/evaluate with `--num-feat 6 --use-cond`.
+
 Alternatively, one can evaluate the pre-trained model across the Aspen Dataset, use the sidebands to determine the background function, and apply cuts to the classifier output to identify anomalies. The pretrained classifier evaluation can be carried out using the commands:
 
 ```bash
