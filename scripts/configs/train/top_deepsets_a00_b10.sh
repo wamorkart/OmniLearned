@@ -4,7 +4,7 @@
 #
 # One-variable change from top_deepsets_a05 (a/b weighting). Matches the
 # PET2-student T-sweep winner (AUC 0.9879 @ a00/b10) and DistillNet
-# (arXiv:2311.12551). See EXPERIMENTS_deepsets_kd.md for the mislabeled-PET2
+# (arXiv:2311.12551). See docs/EXPERIMENTS_deepsets_kd.md for the mislabeled-PET2
 # retrain history.
 #
 # --wandb ON (inherited from _defaults.sh).

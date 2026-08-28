@@ -220,7 +220,7 @@ symlink to it. This keeps both reference styles working:
 
 - `configs/train/top_deepsets_*.sh` + `distill_loop_top.sh` /
   `run_eval_deepsets.sh` — DeepSets-KD family
-  (see `../EXPERIMENTS_deepsets_kd.md`)
+  (see `../docs/EXPERIMENTS_deepsets_kd.md`)
 - `run_all_chunks.sh` / `submit_datasets.sh` — chunked teacher-logit generation
 - `train_omnifold_pythia_herwig.sh` / `distill_loop_omnifold.sh` — OmniFold unfolding
 - `qat_train_deepsets_distillnet_8bit.sh` — QAT for the FPGA student

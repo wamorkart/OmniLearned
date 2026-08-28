@@ -15,7 +15,7 @@
 #       --indir /pscratch/sd/t/twamorka/omnilearned/eval/top_distill_deepsets/ \
 #       --tag <save_tag>
 #
-# Known checkpoint tags (see EXPERIMENTS_deepsets_kd.md):
+# Known checkpoint tags (see docs/EXPERIMENTS_deepsets_kd.md):
 #   distill_top_deepsets_small_scratch_a05_T4_archfix0804   (reference)
 #   distill_top_deepsets_small_scratch_a00_b10_T4
 #   distill_top_deepsets_small_scratch_a05_wd005_T4

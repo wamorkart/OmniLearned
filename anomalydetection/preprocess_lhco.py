@@ -230,7 +230,7 @@ def plan(args):
     """Return {split: [(src_filename, label, start_frac, stop_frac), ...]}.
 
     idealized: truth labels, 0 = background, 1 = signal. Fully supervised, the
-        setup LHCO_ANOMALY_DETECTION_PROCEDURE.md's Pipeline A/B assume.
+        setup docs/LHCO_ANOMALY_DETECTION_PROCEDURE.md's Pipeline A/B assume.
     cwola: weak supervision, 0 = background template (the *_extended sample),
         1 = "data" (background + injected signal). This is what lgatr_train.py
         trains on, so it is the apples-to-apples comparison against L-GATr.
