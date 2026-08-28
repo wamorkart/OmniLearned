@@ -11,6 +11,7 @@ wandb/
 *.npy
 checks/ab_fp32/
 top/
+logs/
 
 # Claude Code session-local settings/tooling
 .claude/
