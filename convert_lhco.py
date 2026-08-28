@@ -4,6 +4,7 @@ Pipeline: 'fastjet_awkward.ipynb'
                     --> convert_lhco.py
 
 `salloc -N 1 -C cpu -q interactive -t 01:00:00 -A m3246` before running.
+Run as 'python convert_lhco.py --nsig {NSIG}
 
 `fastjet_awkward.ipynb` clusters raw LHCO events as follows:
     jet_data     (N, 2, 4)      N events, 2 jets/event, 4 numbers/jet = (pt, eta, phi, m)
@@ -24,7 +25,7 @@ OmniLearned to take in one row per EVENT, both jets' particles merged together
     data   (N, 2P, 6)           N events, max 2P merged particles, 6 numbers/particle
                                                                     = (delta_eta, delta_phi, log_pt, log_e,
                                                                        onehot_jet0, onehot_jet1)
-    pid    (N,)                 N events, 1 number/event = (0 if data, 1 if pure background)
+    pid    (N,)                 N events, 1 number/event = (0 if pure background, 1 if data)
     global (N, 11)              N events, 11 numbers/event = mjj, then per jet (log pT, eta, phi, log mass,
                                                                     multiplicity / 100), jet0 then jet1
                                                                     -- jet-level observables per torch_lhco.py's `jet` array
@@ -33,11 +34,11 @@ Idealized CWoLa setup: no generative model is trained, background sampled from p
 
 Builds dataset "lhco_ad" with two separate files per split (data.h5,
 bkg.h5). Each file gets an independent 80/10/10 train/val/test split:
-    data.h5  background (all) + signal (up to --nsig injected events), pid=0
-    bkg.h5   the independent extended-background file, pid=1 -- the
+    bkg.h5   the independent extended-background file, pid=0 -- the
              "true background" stand-in a generator would otherwise have
              produced, kept fully disjoint from data.h5 so the classifier
              isn't trained to separate a sample from itself
+    data.h5  background (all) + signal (up to --nsig injected events), pid=1
 
 
 """
@@ -85,7 +86,7 @@ def build_rows(paths, pid_label, nsig=None, rng=None):
     `data`'s last 2 columns are a one-hot marking which jet each particle
     came from. `global` = mjj + each jet's own (log pT, eta, phi, log mass,
     multiplicity/100). pid_label is the classifier's training label
-    (0=data, 1=background), one per event."""
+    (0=background, 1=data), one per event."""
     jet, data, mjj = load_source(paths)
     data, valid = apply_pt_cut(data)
 
@@ -157,14 +158,18 @@ def main():
     args = parse_args()
     rng = np.random.default_rng(args.seed)
 
-    bkg = build_rows(BACKGROUND_FILES, pid_label=0)
-    sig = build_rows(SIGNAL_FILES, pid_label=0, nsig=args.nsig, rng=rng)
+    bkg = build_rows(BACKGROUND_FILES, pid_label=1)
+    sig = build_rows(SIGNAL_FILES, pid_label=1, nsig=args.nsig, rng=rng)
     data_rows = {k: np.concatenate([bkg[k], sig[k]]) for k in bkg}
-    bkg_rows = build_rows(BACKGROUND_EXTENDED_FILES, pid_label=1)
+    bkg_rows = build_rows(BACKGROUND_EXTENDED_FILES, pid_label=0)
+
+    # one subfolder per --nsig value, so a sweep doesn't overwrite prior runs
+    nsig_dir = f"nsig_{args.nsig}" if args.nsig is not None else "nsig_all"
+    out_dir = OUT_DIR / nsig_dir
 
     for filename, rows in (("data", data_rows), ("bkg", bkg_rows)):
-        counts = write_pool("lhco_ad", filename, OUT_DIR, rows, args.val_frac, args.test_frac, rng)
-        print(f"lhco_ad/{filename}: {counts}, total={sum(counts.values())}")
+        counts = write_pool("lhco_ad", filename, out_dir, rows, args.val_frac, args.test_frac, rng)
+        print(f"{nsig_dir}/lhco_ad/{filename}: {counts}, total={sum(counts.values())}")
 
 
 if __name__ == "__main__":
