@@ -12,6 +12,7 @@ wandb/
 checks/ab_fp32/
 top/
 logs/
+x/
 
 # Claude Code session-local settings/tooling
 .claude/
