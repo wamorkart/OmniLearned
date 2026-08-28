@@ -85,7 +85,7 @@ log "=== Stage 3: computing metrics and comparison table ==="
 module load conda
 conda activate /global/homes/t/twamorka/omnilearned-clean/env
 
-python "$SCRIPT_DIR/../compare_micro_ce_vs_kd.py" | tee "$RESULTS_DIR/micro_ce_vs_kd.txt"
+python "$SCRIPT_DIR/../analysis/compare_micro_ce_vs_kd.py" | tee "$RESULTS_DIR/micro_ce_vs_kd.txt"
 
 log "=== Stage 3 done. Results: $RESULTS_DIR/micro_ce_vs_kd.txt ==="
 log "=== STUDY COMPLETE ==="

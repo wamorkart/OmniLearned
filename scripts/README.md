@@ -211,9 +211,10 @@ symlink to it. This keeps both reference styles working:
 
 - Loop/queue scripts call their sibling launchers via
   `bash "$SCRIPT_DIR/<sibling>.sh"`, so they resolve regardless of CWD.
-- Scripts that call a Python entry point (`compute_metrics_top.py`,
-  `compare_micro_ce_vs_kd.py`, …) reference it at the repo root — either by
-  bare name after a `cd` to the root, or as `"$SCRIPT_DIR/../<file>.py"`.
+- Scripts that call a Python helper reference it under `tools/` (live:
+  `tools/metrics/compute_metrics_top.py`, `tools/preprocess/build_teacher_h5.py`,
+  …) or `analysis/` (frozen one-offs) — either by path after a `cd` to the
+  root, or as `"$SCRIPT_DIR/../<dir>/<file>.py"`.
 
 ## Notable entry points
 

@@ -61,7 +61,7 @@ configuration from this project's own earlier α/β/T sweep
 ## Why we win at 30% signal efficiency but lose at 50%
 
 Verified directly (not just from summary-metric memory) via
-`roc_shape_comparison.py`, which recomputes ROC curves from the raw
+`analysis/roc_shape_comparison.py`, which recomputes ROC curves from the raw
 `outputs_*_top_test_rank*.npz` prediction files for `fine_tune_top_l`
 (teacher), `fine_tune_top_s` (CE-only baseline), and both KD students.
 Plot saved to
