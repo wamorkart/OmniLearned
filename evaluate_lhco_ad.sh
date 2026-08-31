@@ -24,8 +24,8 @@ export MASTER_ADDR=$(hostname)
 SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
 SIZE=small
-NSIG=all
-DESCRIPT_TAG=i300_e10
+NSIG=500
+DESCRIPT_TAG=test2
 DATASET_TYPE=${DATASET_TYPE:-test}
 QUANTIZATION=none                          # "none", "int8", "int8dq", or "bf16"
 # ============================================================

@@ -38,7 +38,7 @@ DATASET=lhco_ad
 PRETRAIN_TAG=pretrain_s
 SIZE=small
 NSIG=500
-DESCRIPT_TAG=i300_e15
+DESCRIPT_TAG=test2
 # ============================================================
 
 SAVE_TAG="${SAVE_TAG_BASE}_${DATASET}_nsig${NSIG}_${DESCRIPT_TAG}"
@@ -54,8 +54,8 @@ cmd="omnilearned train \
   --path ${LHCO_PATH} \
   --size ${SIZE} \
   --use-add --num-add 2 \
-  --iterations 300 \
-  --batch 32 --epoch 15 --wd 10.0 --lr 1e-6 \
+  --iterations 1000 \
+  --batch 32 --epoch 10 --wd 0.01 --lr 1e-4 --lr-factor 10.0 \
   --num-workers 4 \
   --wandb --resuming"
 
