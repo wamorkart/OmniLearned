@@ -1,4 +1,3 @@
-import csv
 import json
 import numpy as np
 import torch
@@ -486,24 +485,6 @@ def train_model(
             print(
                 "Time taken for epoch {} is {} sec".format(epoch, time.time() - start)
             )
-
-            # Always-on per-epoch CSV log, independent of --wandb, so
-            # progress survives even if a session is killed before the
-            # end-of-run training_{save_tag}.json is written.
-            epoch_row = {
-                "epoch": epoch + 1,
-                "lr": lr_scheduler.get_last_lr()[0],
-                "time_sec": time.time() - start,
-                **{f"train_{key}": train_logs[key] for key in train_logs},
-                **{f"val_{key}": val_logs[key] for key in val_logs},
-            }
-            log_path = os.path.join(output_dir, f"epoch_log_{save_tag}.csv")
-            write_header = not os.path.exists(log_path)
-            with open(log_path, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=list(epoch_row.keys()))
-                if write_header:
-                    writer.writeheader()
-                writer.writerow(epoch_row)
 
         if losses["val_loss"][-1] < tracker["bestValLoss"]:
             tracker["bestValLoss"] = losses["val_loss"][-1]
