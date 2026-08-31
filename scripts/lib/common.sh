@@ -8,7 +8,7 @@
 # propagates the resulting environment to every task.
 _omnilearned_load_env() {
     module load conda
-    conda activate /global/homes/t/twamorka/omnilearned-clean/env
+    conda activate ol_distill #/global/homes/t/twamorka/omnilearned-clean/env
     module load pytorch
 
     export MASTER_ADDR="$(hostname)"
