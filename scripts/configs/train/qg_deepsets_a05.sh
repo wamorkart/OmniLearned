@@ -8,15 +8,10 @@
 # Everything else -- batch 128, iterations 1000, epoch 50, lr 5e-4, wd 0.5,
 # teacher companion dir/tag, data path -- comes from _defaults.sh unchanged.
 #
-# Was: distill_train_top_deepsets.sh CONFIG=a05 (tag suffix _archfix0804).
-# This config uses a clean SAVE_TAG for a fresh run; to continue the existing
-# checkpoint instead, set SAVE_TAG=distill_top_deepsets_small_scratch_a05_T4_archfix0804
-# at call time.
-#
 # Note: --wandb is ON here (inherited from _defaults.sh). The old script
 # defaulted it off for this recipe; the multi-node wandb/NCCL caution was
 # retired 2026-08-25.
-OUTDIR=/pscratch/sd/m/mbenyas/OmniLearned/checkpoints/
+OUTDIR=/pscratch/sd/t/twamorka/omnilearned/checkpoints/
 ARCH=deep-sets
 DATASET=qg
 INTERACTION=1

@@ -25,7 +25,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 REPO=/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation #/global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned
 CHECKPOINT_DIR=/pscratch/sd/t/twamorka/omnilearned/checkpoints/
 NPZ_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/qg
-COMPANION_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion
+COMPANION_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion_fine_tune_qg_pretrain_l
 DATA_PATH=/global/cfs/cdirs/m4567/www/
 TAG=fine_tune_qg_pretrain_l
 DATASET=qg
@@ -45,9 +45,9 @@ evaluate_split() {
           --path $DATA_PATH \
           --size large \
           --interaction \
-          --local-interaction \
           --mode classifier \
           --num-classes 2 \
+          --use-pid \
           --batch 32 \
           --num-workers 4 \
           --dataset-type $SPLIT
@@ -56,8 +56,8 @@ evaluate_split() {
 }
 
 # --- Phase 1: generate NPZ shards for train and val ---
-evaluate_split train
-evaluate_split val
+# evaluate_split train
+# evaluate_split val
 
 # --- Phase 2: convert NPZ shards -> companion H5 files ---
 echo "=== $(date '+%F %T')  building companion H5 files ==="
