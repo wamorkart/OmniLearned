@@ -62,7 +62,7 @@ def _log_heartbeat(epoch, batch_idx):
 
 
 def get_logs(device):
-    logs_buff = torch.zeros((7), dtype=torch.float32, device=device)
+    logs_buff = torch.zeros((8), dtype=torch.float32, device=device)
     logs = {}
     logs["loss"] = logs_buff[0].view(-1)
     logs["loss_class"] = logs_buff[1].view(-1)
@@ -71,6 +71,10 @@ def get_logs(device):
     logs["loss_class_event"] = logs_buff[4].view(-1)
     logs["loss_kd"] = logs_buff[5].view(-1)
     logs["loss_cls_mse"] = logs_buff[6].view(-1)
+    # Standardization-independent KD diagnostic (plain KL at distill_T, no
+    # logit standardization) -- lets an A/B on --distill-standardize be
+    # compared on a common metric, since loss_kd itself changes definition.
+    logs["loss_kd_ref"] = logs_buff[7].view(-1)
     return logs
 
 
@@ -97,6 +101,7 @@ def train_step(
     distill_beta=0.5,
     distill_T=4.0,
     distill_teacher_slice=None,
+    distill_standardize=False,
     distill_cls=False,
     distill_gamma=0.5,
     distill_cls_num_tokens=4,
@@ -176,7 +181,8 @@ def train_step(
                 if distill_teacher_slice is not None:
                     teacher_logits = teacher_logits[:, distill_teacher_slice[0]:distill_teacher_slice[1]]
                 loss_kd = get_distill_loss(
-                    outputs["y_pred"], teacher_logits, distill_T=distill_T
+                    outputs["y_pred"], teacher_logits, distill_T=distill_T,
+                    standardize=distill_standardize,
                 )
                 logs["loss_kd"] += loss_kd.detach()
                 loss = distill_alpha * loss + distill_beta * loss_kd
@@ -247,6 +253,7 @@ def val_step(
     distill_beta=0.5,
     distill_T=4.0,
     distill_teacher_slice=None,
+    distill_standardize=False,
     distill_cls=False,
     distill_gamma=0.5,
     distill_cls_num_tokens=4,
@@ -313,9 +320,19 @@ def val_step(
                 if distill_teacher_slice is not None:
                     teacher_logits = teacher_logits[:, distill_teacher_slice[0]:distill_teacher_slice[1]]
                 loss_kd = get_distill_loss(
-                    outputs["y_pred"], teacher_logits, distill_T=distill_T
+                    outputs["y_pred"], teacher_logits, distill_T=distill_T,
+                    standardize=distill_standardize,
                 )
                 logs["loss_kd"] += loss_kd.detach()
+                # Common-metric diagnostic: plain KL at distill_T regardless of
+                # the standardize flag, so std vs no-std runs are comparable.
+                if distill_standardize:
+                    logs["loss_kd_ref"] += get_distill_loss(
+                        outputs["y_pred"], teacher_logits, distill_T=distill_T,
+                        standardize=False,
+                    ).detach()
+                else:
+                    logs["loss_kd_ref"] += loss_kd.detach()
 
                 if distill_cls:
                     if outputs["x_body"] is None:
@@ -375,6 +392,7 @@ def train_model(
     distill_beta=0.5,
     distill_T=4.0,
     distill_teacher_slice=None,
+    distill_standardize=False,
     distill_cls=False,
     distill_gamma=0.5,
     distill_cls_num_tokens=4,
@@ -427,6 +445,7 @@ def train_model(
             distill_beta=distill_beta,
             distill_T=distill_T,
             distill_teacher_slice=distill_teacher_slice,
+            distill_standardize=distill_standardize,
             distill_cls=distill_cls,
             distill_gamma=distill_gamma,
             distill_cls_num_tokens=distill_cls_num_tokens,
@@ -447,6 +466,7 @@ def train_model(
             distill_beta=distill_beta,
             distill_T=distill_T,
             distill_teacher_slice=distill_teacher_slice,
+            distill_standardize=distill_standardize,
             distill_cls=distill_cls,
             distill_gamma=distill_gamma,
             distill_cls_num_tokens=distill_cls_num_tokens,
@@ -547,6 +567,7 @@ def run(
     wandb=False,
     fine_tune: bool = False,
     resuming: bool = False,
+    seed: int = -1,
     num_feat: int = 4,
     model_size: str = "small",
     interaction: bool = False,
@@ -593,6 +614,7 @@ def run(
     distill_beta: float = 0.5,
     distill_T: float = 4.0,
     distill_teacher_slice: str = "",
+    distill_standardize: bool = False,
     distill_cls: bool = False,
     distill_gamma: float = 0.5,
     distill_cls_teacher_dim: int = 1024,
@@ -625,6 +647,20 @@ def run(
     _amp_dtype = amp_dtypes[amp_dtype]
 
     local_rank, rank, size = ddp_setup()
+
+    if seed >= 0:
+        # Rank-offset so DDP replicas still see different data draws, but the
+        # whole run is reproducible given `seed` -- needed for a controlled A/B
+        # (e.g. --distill-standardize on vs off with identical init + data order).
+        import random as _random
+
+        _s = seed + rank
+        _random.seed(_s)
+        np.random.seed(_s)
+        torch.manual_seed(_s)
+        torch.cuda.manual_seed_all(_s)
+        if rank == 0:
+            print(f"[seed] deterministic run, base seed {seed} (+rank)")
 
     # set up model
     if arch == "pet2":
@@ -877,6 +913,7 @@ def run(
                 "distill_alpha": distill_alpha,
                 "distill_beta": distill_beta,
                 "distill_T": distill_T,
+                "distill_standardize": distill_standardize,
                 "distill_cls": distill_cls,
                 "distill_gamma": distill_gamma,
             },
@@ -922,6 +959,7 @@ def run(
         distill_beta=distill_beta,
         distill_T=distill_T,
         distill_teacher_slice=_teacher_slice,
+        distill_standardize=distill_standardize,
         distill_cls=distill_cls,
         distill_gamma=distill_gamma,
     )

@@ -364,8 +364,26 @@ def get_loss(
     return loss
 
 
-def get_distill_loss(student_logits, teacher_logits, distill_T=4.0):
-    """KL divergence between student and pre-saved teacher logits at temperature T."""
+def _standardize_logits(z, eps=1e-7):
+    """Per-sample Z-score along the class dim (Logit Standardization in KD,
+    CVPR 2024, arXiv:2403.01427). Makes each logit vector zero-mean / unit-std
+    so the KL matches the *shape* of the teacher distribution rather than its
+    absolute range -- decouples teacher/student logit magnitude, which is the
+    point of the method for a large-teacher / small-student gap."""
+    z = z - z.mean(dim=-1, keepdim=True)
+    return z / (z.std(dim=-1, keepdim=True) + eps)
+
+
+def get_distill_loss(student_logits, teacher_logits, distill_T=4.0, standardize=False):
+    """KL divergence between student and pre-saved teacher logits at temperature T.
+
+    If ``standardize`` is set, both logit vectors are Z-scored per sample before
+    the softmax (logit standardization); ``distill_T`` is then applied to the
+    already unit-std logits.
+    """
+    if standardize:
+        teacher_logits = _standardize_logits(teacher_logits)
+        student_logits = _standardize_logits(student_logits)
     soft_teacher = F.softmax(teacher_logits / distill_T, dim=-1)
     log_soft_student = F.log_softmax(student_logits / distill_T, dim=-1)
     return (distill_T**2) * F.kl_div(

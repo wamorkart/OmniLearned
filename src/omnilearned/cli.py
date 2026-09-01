@@ -29,6 +29,10 @@ def train(
     wandb: bool = typer.Option(False, help="use wandb logging"),
     fine_tune: bool = typer.Option(False, help="Fine tune the model"),
     resuming: bool = typer.Option(False, help="Resume training"),
+    seed: int = typer.Option(
+        -1, help="Base RNG seed (torch/numpy/random, +rank per DDP replica). "
+                 "-1 (default) leaves runs unseeded / non-deterministic."
+    ),
     # Model Options
     num_feat: int = typer.Option(
         4,
@@ -115,6 +119,12 @@ def train(
              "2-11 from a 210-class pretrained teacher for a 10-class student. "
              "Default '' keeps all columns.",
     ),
+    distill_standardize: bool = typer.Option(
+        False,
+        help="Per-sample Z-score of teacher and student logits before the KD "
+             "softmax (Logit Standardization, CVPR 2024). Decouples "
+             "teacher/student logit magnitude; helps under a large capacity gap.",
+    ),
     distill_cls: bool = typer.Option(
         False,
         help="Also match the student's body-token embedding (outputs['x_body']) "
@@ -146,6 +156,7 @@ def train(
         wandb,
         fine_tune,
         resuming,
+        seed,
         num_feat,
         size,
         interaction,
@@ -192,6 +203,7 @@ def train(
         distill_beta=distill_beta,
         distill_T=distill_T,
         distill_teacher_slice=distill_teacher_slice,
+        distill_standardize=distill_standardize,
         distill_cls=distill_cls,
         distill_gamma=distill_gamma,
         distill_cls_teacher_dim=distill_cls_teacher_dim,
