@@ -2,8 +2,7 @@
 # qg. KD alpha=beta=0.5, T=4, size=small. The reference / confirmed
 # best DeepSets-KD recipe.
 #
-# DeepSets is Phi-embed + masked pool + rho-MLP, no attention, so the
-# interaction flags are turned off (the CLI would ignore them anyway).
+# DeepSets is Phi-embed + masked pool + rho-MLP, no attention.
 #
 # Everything else -- batch 128, iterations 1000, epoch 50, lr 5e-4, wd 0.5,
 # teacher companion dir/tag, data path -- comes from _defaults.sh unchanged.
@@ -11,7 +10,7 @@
 # Note: --wandb is ON here (inherited from _defaults.sh). The old script
 # defaulted it off for this recipe; the multi-node wandb/NCCL caution was
 # retired 2026-08-25.
-OUTDIR=/pscratch/sd/t/twamorka/omnilearned/checkpoints/
+OUTDIR=/pscratch/sd/m/mbenyas/OmniLearned/checkpoints/
 ARCH=deep-sets
 DATASET=qg
 INTERACTION=1
