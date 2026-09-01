@@ -49,8 +49,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent
-OUT_DIR = REPO_ROOT / "LHCO"
+OUT_DIR = Path("/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO")
 INPUT_DIR = Path("/global/cfs/cdirs/m3246/mbenyas/OmniLearn/LHCO")
 
 BACKGROUND_FILES = [INPUT_DIR / "train_background_SR.h5", INPUT_DIR / "val_background_SR.h5"]

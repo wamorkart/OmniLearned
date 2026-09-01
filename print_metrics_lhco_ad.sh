@@ -9,6 +9,10 @@
 module load conda
 conda activate ol_distill
 
+# See fine_tune_lhco_ad.sh: ol_distill's editable install points at the main
+# checkout, so this worktree's code only wins if it is on PYTHONPATH.
+export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
+
 # ============================================================
 #  EDIT THESE PER RUN -- must match the evaluate_lhco_ad.sh run
 # ============================================================

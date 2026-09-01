@@ -15,12 +15,18 @@
 # the interaction terms turn out to matter for performance.
 #
 # Run inside an salloc GPU interactive job:
-#   salloc -C gpu -q interactive -t 240 --nodes 1 --ntasks-per-node 4 --gpus-per-node 4 -A m3246
+#   salloc -C gpu -q interactive -t 240 --nodes 4 --ntasks-per-node 4 --gpus-per-node 4 -A m3246
 # and then run bash fine_tune_lhco_ad.sh
 
 module load conda
 conda activate ol_distill
 # module load pytorch
+
+# This tree is a git worktree, but ol_distill's editable install resolves
+# omnilearned to the MAIN checkout (.../OmniLearned_distillation/src) via a
+# .pth file. Without this, the job silently runs that branch's code instead of
+# this worktree's. PYTHONPATH is searched before site-packages .pth entries.
+export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
 
 export MASTER_ADDR=$(hostname)
 export NCCL_TIMEOUT=600000
@@ -37,8 +43,8 @@ SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
 PRETRAIN_TAG=pretrain_s
 SIZE=small
-NSIG=500
-DESCRIPT_TAG=test2
+NSIG=10000
+DESCRIPT_TAG=test4
 # ============================================================
 
 SAVE_TAG="${SAVE_TAG_BASE}_${DATASET}_nsig${NSIG}_${DESCRIPT_TAG}"
@@ -54,8 +60,10 @@ cmd="omnilearned train \
   --path ${LHCO_PATH} \
   --size ${SIZE} \
   --use-add --num-add 2 \
+  --conditional --num-cond 11 \
   --iterations 1000 \
-  --batch 32 --epoch 10 --wd 0.01 --lr 1e-4 --lr-factor 10.0 \
+  --interaction --local-interaction \
+  --batch 16 --epoch 10 --wd 0.01 --lr 1e-4 --lr-factor 10.0 \
   --num-workers 4 \
   --wandb --resuming"
 
