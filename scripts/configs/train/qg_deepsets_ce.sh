@@ -17,4 +17,4 @@ INTERACTION=1
 LOCAL_INTERACTION=0
 EXTRA_FLAGS="--use-pid"
 DISTILL=0
-SAVE_TAG=train_qg_deepsets_small_ce_scratch
+SAVE_TAG=train_qg_deepsets_small_ce_scratch_r3

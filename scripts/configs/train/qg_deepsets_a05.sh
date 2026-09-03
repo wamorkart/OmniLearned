@@ -17,4 +17,4 @@ INTERACTION=1
 LOCAL_INTERACTION=0
 EXTRA_FLAGS="--use-pid"
 TEACHER_TAG=fine_tune_qg_pretrain_l
-SAVE_TAG=distill_qg_deepsets_small_scratch_a05_T4
+SAVE_TAG=distill_qg_deepsets_small_scratch_a05_T4_r3
