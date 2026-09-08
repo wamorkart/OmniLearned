@@ -43,14 +43,14 @@ SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
 PRETRAIN_TAG=pretrain_s
 SIZE=small
-NSIG=10000
-DESCRIPT_TAG=test4
+#NSIG=10000
+DESCRIPT_TAG=pure_test1
 # ============================================================
 
 SAVE_TAG="${SAVE_TAG_BASE}_${DATASET}_nsig${NSIG}_${DESCRIPT_TAG}"
 DIR="/pscratch/sd/m/mbenyas/LHCO"
 # LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/nsig_${NSIG}"
-LHCO_path="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/pure_test"
+LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/pure_test"
 
 # add back interaction terms
 cmd="omnilearned train \

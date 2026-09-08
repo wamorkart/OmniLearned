@@ -395,6 +395,7 @@ def load_data(
         "aspen_bsm_ad_sr_hl",
         "lhco_ad_data",
         "lhco_ad_bkg",
+        "lhco_ad",
         "collide",
     ]
     if dataset_name not in supported_datasets:
