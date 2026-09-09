@@ -1,0 +1,22 @@
+# Fine-tuned qg teacher (fine_tune_qg_pretrain_l) -> DeepSets/PFN student on
+# qg. KD alpha=0, beta=1, T=4, size=small. The reference / confirmed
+# best DeepSets-KD recipe.
+#
+# DeepSets is Phi-embed + masked pool + rho-MLP, no attention.
+#
+# Everything else -- batch 128, iterations 1000, epoch 50, lr 5e-4, wd 0.5,
+# teacher companion dir/tag, data path -- comes from _defaults.sh unchanged.
+#
+# Note: --wandb is ON here (inherited from _defaults.sh). The old script
+# defaulted it off for this recipe; the multi-node wandb/NCCL caution was
+# retired 2026-08-25.
+OUTDIR=/pscratch/sd/m/mbenyas/OmniLearned/checkpoints/
+ARCH=deep-sets
+DATASET=qg
+INTERACTION=1
+LOCAL_INTERACTION=0
+EXTRA_FLAGS="--use-pid"
+TEACHER_TAG=fine_tune_qg_pretrain_l
+SAVE_TAG=distill_qg_deepsets_small_scratch_a0_T4
+ALPHA=0
+BETA=1

@@ -28,7 +28,10 @@ OmniLearned to take in one row per EVENT, both jets' particles merged together
     pid    (N,)                 N events, 1 number/event = (0 if pure background, 1 if data)
     global (N, 11)              N events, 11 numbers/event = mjj, then per jet (log pT, eta, phi, log mass,
                                                                     multiplicity / 100), jet0 then jet1
-                                                                    -- jet-level observables per torch_lhco.py's `jet` array
+                                                                    -- jet-level observables per torch_lhco.py's `jet` array.
+                                                                    Z-scored per column using background_SR-only
+                                                                    mean/std, applied uniformly to signal and
+                                                                    background_SR_extended too.
 
 Idealized CWoLa setup: no generative model is trained, background sampled from predefined distribution.
 
@@ -123,6 +126,23 @@ def build_rows(paths, pid_label, nsig=None, rng=None):
     }
 
 
+def global_zscore_stats(global_arr):
+    """Per-column mean/std of `global`, meant to be fit on background_SR
+    alone (the reference distribution you actually have in a real search) and
+    applied uniformly to every population -- background_SR, injected signal,
+    and background_SR_extended alike."""
+    mean = global_arr.mean(axis=0)
+    std = global_arr.std(axis=0)
+    std[std == 0] = 1.0
+    return mean, std
+
+
+def apply_global_zscore(rows, mean, std):
+    rows = dict(rows)
+    rows["global"] = (rows["global"] - mean) / std
+    return rows
+
+
 def split_indices(n, val_frac, test_frac, rng):
     """Shuffle [0, n) into train/val/test index arrays with exact counts."""
     perm = rng.permutation(n)
@@ -130,12 +150,19 @@ def split_indices(n, val_frac, test_frac, rng):
     return {"val": perm[:n_val], "test": perm[n_val : n_val + n_test], "train": perm[n_val + n_test :]}
 
 
-def write_pool(dataset, filename, out_dir, rows, val_frac, test_frac, rng):
+def write_pool(dataset, filename, out_dir, rows, val_frac, test_frac, rng=None, indices=None):
     """Split `rows` into train/val/test and write each as
-    out_dir/dataset/<split>/filename.h5."""
+    out_dir/dataset/<split>/filename.h5. Pass `indices` (a {split: idx_array}
+    dict) to use an already-computed split instead of generating a fresh one
+    -- e.g. so background_SR's split can be fixed before background_SR and
+    signal are combined into `data`, keeping their contributions to each
+    split aligned with the split background_SR's own train stats were fit
+    on."""
     n = rows["data"].shape[0]
+    if indices is None:
+        indices = split_indices(n, val_frac, test_frac, rng)
     counts = {}
-    for split, idx in split_indices(n, val_frac, test_frac, rng).items():
+    for split, idx in indices.items():
         path = Path(out_dir) / dataset / split / f"{filename}.h5"
         path.parent.mkdir(parents=True, exist_ok=True)
         with h5py.File(path, "w") as f:
@@ -158,17 +185,41 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     bkg = build_rows(BACKGROUND_FILES, pid_label=1)
+
+    # Split background_SR and fit normalization stats on its train slice
+    # BEFORE anything nsig-dependent touches `rng` -- the idealized-CWoLa
+    # convention (standardize using train statistics only, apply uniformly
+    # to val/test and to every other population) should give the same
+    # background_SR split/stats no matter what --nsig is, and consuming rng
+    # via signal's nsig-capping first would silently shift this split
+    # depending on --nsig.
+    bkg_split = split_indices(bkg["data"].shape[0], args.val_frac, args.test_frac, rng)
+    mean, std = global_zscore_stats(bkg["global"][bkg_split["train"]])
+
     sig = build_rows(SIGNAL_FILES, pid_label=1, nsig=args.nsig, rng=rng)
-    data_rows = {k: np.concatenate([bkg[k], sig[k]]) for k in bkg}
     bkg_rows = build_rows(BACKGROUND_EXTENDED_FILES, pid_label=0)
+    sig_split = split_indices(sig["data"].shape[0], args.val_frac, args.test_frac, rng)
+
+    bkg = apply_global_zscore(bkg, mean, std)
+    sig = apply_global_zscore(sig, mean, std)
+    bkg_rows = apply_global_zscore(bkg_rows, mean, std)
+
+    data_rows = {k: np.concatenate([bkg[k], sig[k]]) for k in bkg}
+    n_bkg = bkg["data"].shape[0]
+    data_split = {
+        split: np.concatenate([bkg_split[split], n_bkg + sig_split[split]])
+        for split in ("train", "val", "test")
+    }
 
     # one subfolder per --nsig value, so a sweep doesn't overwrite prior runs
     nsig_dir = f"nsig_{args.nsig}" if args.nsig is not None else "nsig_all"
     out_dir = OUT_DIR / nsig_dir
 
-    for filename, rows in (("data", data_rows), ("bkg", bkg_rows)):
-        counts = write_pool("lhco_ad", filename, out_dir, rows, args.val_frac, args.test_frac, rng)
-        print(f"{nsig_dir}/lhco_ad/{filename}: {counts}, total={sum(counts.values())}")
+    counts = write_pool("lhco_ad", "data", out_dir, data_rows, args.val_frac, args.test_frac, indices=data_split)
+    print(f"{nsig_dir}/lhco_ad/data: {counts}, total={sum(counts.values())}")
+
+    counts = write_pool("lhco_ad", "bkg", out_dir, bkg_rows, args.val_frac, args.test_frac, rng=rng)
+    print(f"{nsig_dir}/lhco_ad/bkg: {counts}, total={sum(counts.values())}")
 
 
 if __name__ == "__main__":
