@@ -9,11 +9,19 @@
 # Run inside an salloc GPU interactive job:
 #   salloc -C gpu -q interactive -t 240 --nodes 1 --ntasks-per-node 4 \
 #          --gpus-per-node 4 -A m3246 bash save_teacher_logits_top.sh
+#
+# Paths are env-overridable so a collaborator can run this against their own
+# conda env / checkout / scratch without editing the file:
+#   OMNILEARNED_ENV     conda env prefix         (default: twamorka's)
+#   OMNILEARNED_REPO    repo checkout            (default: shared m3246 checkout)
+#   OMNILEARNED_SCRATCH per-user scratch root    (default: twamorka's pscratch)
+#   CHECKPOINT_DIR      dir holding best_model_${TAG}.pt (default: $OMNILEARNED_SCRATCH/checkpoints/)
+#   DATA_PATH          source datasets          (default: /global/cfs/cdirs/m4567/www/, world-readable)
 
 set -euo pipefail
 
 module load conda
-conda activate /global/homes/t/twamorka/omnilearned-clean/env
+conda activate "${OMNILEARNED_ENV:-/global/homes/t/twamorka/omnilearned-clean/env}"
 module load pytorch
 
 export MASTER_ADDR=$(hostname)
@@ -22,12 +30,17 @@ export NCCL_DEBUG=WARN
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-REPO=/global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned
-CHECKPOINT_DIR=/pscratch/sd/t/twamorka/omnilearned/checkpoints/
-NPZ_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/top
-COMPANION_DIR=/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion
-DATA_PATH=/global/cfs/cdirs/m4567/www/
-TAG=fine_tune_top_l
+REPO="${OMNILEARNED_REPO:-/global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned}"
+SCRATCH="${OMNILEARNED_SCRATCH:-/pscratch/sd/t/twamorka/omnilearned}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-$SCRATCH/checkpoints/}"
+NPZ_DIR="${NPZ_DIR:-$SCRATCH/teacher_logits/top}"
+TAG="${TAG:-fine_tune_top_l}"
+# Tag-namespaced by default to match run_train.sh's TEACHER_DIR default
+# ($TEACHER_ROOT/companion_$TEACHER_TAG) -- without this, two different TAGs
+# would collide in one shared dir and --skip-existing would silently keep
+# whichever teacher's logits got there first.
+COMPANION_DIR="${COMPANION_DIR:-$SCRATCH/teacher_logits/companion_$TAG}"
+DATA_PATH="${DATA_PATH:-/global/cfs/cdirs/m4567/www/}"
 DATASET=top
 
 mkdir -p "$NPZ_DIR"

@@ -8,7 +8,10 @@
 # propagates the resulting environment to every task.
 _omnilearned_load_env() {
     module load conda
-    conda activate /global/homes/t/twamorka/omnilearned-clean/env
+    # Env prefix is overridable so collaborators can point at their own conda
+    # env (any readable absolute path works; another user's $HOME is not
+    # readable on Perlmutter, so put a shared one under /global/cfs/cdirs/m3246).
+    conda activate "${OMNILEARNED_ENV:-/global/homes/t/twamorka/omnilearned-clean/env}"
     module load pytorch
 
     export MASTER_ADDR="$(hostname)"
