@@ -11,8 +11,16 @@ from omnilearned.layers import (
     DynamicTanh,
     InputBlock,
     TokenAttBlock,
+    get_mass,
+    get_dr,
+    get_kt,
 )
 from omnilearned.diffusion import MPFourier, perturb, get_logsnr_alpha_sigma
+
+# String -> activation class, shared by the CLI and the QAT/export tools so a
+# single spelling ("gelu" | "relu") drives every entry point. ReLU is the
+# hls4ml-friendly choice; GELU has no ONNX/hls4ml lowering.
+ACT_LAYERS = {"gelu": nn.GELU, "relu": nn.ReLU}
 
 
 class PET2(nn.Module):
@@ -607,8 +615,51 @@ class PET_body(nn.Module):
         return x
 
 
+class DeepSetsInteraction(nn.Module):
+    """One particle-particle message-passing layer for the DeepSets body.
+
+    For every ordered pair (i, j) of constituents a shared edge MLP maps
+    ``[h_i, h_j, e_ij]`` to a message, where ``e_ij`` is a 3-vector of
+    physics edge features (log invariant mass, log ΔR, log k_T) -- the same
+    quantities the PET2 teacher's InteractionBlock uses. Messages are
+    mean-pooled over valid neighbours j; the caller adds the result back to
+    h_i as a pre-norm residual. This is the EdgeConv / Interaction-Network
+    style of graph layer: it makes the body permutation-equivariant while
+    the downstream masked pool keeps the whole model permutation-invariant.
+
+    Cost is O(N²) in the constituent count, so pair it with ``interaction_k``
+    truncation on wide inputs.
+    """
+
+    def __init__(self, base_dim, mlp_ratio=2, mlp_drop=0.0, act_layer=nn.GELU):
+        super().__init__()
+        self.edge_mlp = MLP(
+            2 * base_dim + 3,
+            int(mlp_ratio * base_dim),
+            out_features=base_dim,
+            act_layer=act_layer,
+            drop=mlp_drop,
+        )
+
+    def forward(self, h, edge_feats, edge_mask):
+        # h: (B, N, D), pre-normed by caller
+        # edge_feats: (B, N, N, 3); edge_mask: (B, N, N, 1)
+        n = h.shape[1]
+        hi = h.unsqueeze(2).expand(-1, -1, n, -1)
+        hj = h.unsqueeze(1).expand(-1, n, -1, -1)
+        msg = self.edge_mlp(torch.cat([hi, hj, edge_feats], dim=-1)) * edge_mask
+        denom = edge_mask.sum(dim=2).clamp(min=1.0)  # (B, N, 1)
+        return msg.sum(dim=2) / denom                 # (B, N, D)
+
+
 class DeepSetsBody(nn.Module):
-    """Per-particle φ MLP + masked mean pooling."""
+    """Per-particle φ MLP + masked mean pooling.
+
+    With ``num_interaction_layers > 0`` a stack of :class:`DeepSetsInteraction`
+    message-passing layers runs between the embedding and the φ blocks, adding
+    particle-particle context. ``num_interaction_layers == 0`` (the default)
+    builds no extra modules and is bit-for-bit the original Deep Sets body.
+    """
 
     def __init__(
         self,
@@ -626,12 +677,22 @@ class DeepSetsBody(nn.Module):
         norm_layer=DynamicTanh,
         act_layer=nn.GELU,
         energy_weighted_pool=False,
+        num_interaction_layers=0,
+        interaction_k=0,
+        fixed_n=0,
     ):
         super().__init__()
         self.pid = pid
         self.add_info = add_info
         self.conditional = conditional
         self.energy_weighted_pool = energy_weighted_pool
+        # 0 => plain Deep Sets; >0 => leading-pT truncation before the body
+        # (constituents are stored pT-descending, so this is a plain slice).
+        self.interaction_k = interaction_k if num_interaction_layers > 0 else 0
+        # >0 => hls4ml-friendly body: fixed leading-pT N slots, no in-graph
+        # validity mask, plain mean pool. Not compatible with the O(N^2)
+        # message-passing path (which needs the mask), so ignore it there.
+        self.fixed_n = int(fixed_n) if num_interaction_layers == 0 else 0
 
         self.embed = MLP(
             input_dim,
@@ -658,6 +719,24 @@ class DeepSetsBody(nn.Module):
             ]
         )
 
+        # Optional particle-particle message passing before the φ blocks.
+        # Only instantiated when requested, so state_dict keys (and existing
+        # checkpoints) are unchanged when num_interaction_layers == 0.
+        self.interaction_norms = nn.ModuleList(
+            [norm_layer(base_dim) for _ in range(num_interaction_layers)]
+        )
+        self.interaction_blocks = nn.ModuleList(
+            [
+                DeepSetsInteraction(
+                    base_dim,
+                    mlp_ratio=mlp_ratio,
+                    mlp_drop=mlp_drop,
+                    act_layer=act_layer,
+                )
+                for _ in range(num_interaction_layers)
+            ]
+        )
+
         if pid:
             self.pid_embed = nn.Embedding(pid_dim, base_dim, padding_idx=0)
 
@@ -677,7 +756,51 @@ class DeepSetsBody(nn.Module):
                 act_layer=act_layer,
             )
 
+    def _forward_fixed_n(self, x, cond=None, pid=None, add_info=None):
+        """hls4ml-friendly forward: assume the leading-pT ``fixed_n`` slots,
+        drop the ``x[..., 2] != 0`` validity mask, and plain-mean-pool over
+        all N slots. The model is trained this way, so it learns to tolerate
+        the zero-padded rows folded into the mean. Removes the Equal/Not/Cast
+        and masked-ReduceSum ops that block hls4ml ingestion; the mean is a
+        GlobalAveragePool on export.
+        """
+        n = self.fixed_n
+        if x.shape[1] > n:
+            x = x[:, :n, :]
+            if pid is not None:
+                pid = pid[:, :n]
+            if add_info is not None:
+                add_info = add_info[:, :n, :]
+
+        h = self.embed(x)  # (B, n, D)
+        if pid is not None and self.pid:
+            h = h + self.pid_embed(pid)
+        if add_info is not None and self.add_info:
+            h = h + self.add_embed(add_info)
+
+        for norm, phi in zip(self.phi_norms, self.phi_blocks):
+            h = h + phi(norm(h))  # pre-norm residual, no mask
+
+        z = h.mean(dim=1)  # plain mean over the fixed N slots
+
+        if cond is not None and self.conditional:
+            z = z + self.cond_embed(cond)
+        return z
+
     def forward(self, x, cond=None, pid=None, add_info=None):
+        if self.fixed_n:
+            return self._forward_fixed_n(x, cond=cond, pid=pid, add_info=add_info)
+
+        if self.interaction_k and x.shape[1] > self.interaction_k:
+            # Keep the leading-pT K constituents. Inputs are stored
+            # pT-descending, so this is a plain slice -- no sort needed.
+            k = self.interaction_k
+            x = x[:, :k, :]
+            if pid is not None:
+                pid = pid[:, :k]
+            if add_info is not None:
+                add_info = add_info[:, :k, :]
+
         mask = (x[:, :, 2:3] != 0).float()  # (B, N, 1)
 
         h = self.embed(x) * mask  # (B, N, D)
@@ -686,6 +809,22 @@ class DeepSetsBody(nn.Module):
             h = h + self.pid_embed(pid) * mask
         if add_info is not None and self.add_info:
             h = h + self.add_embed(add_info) * mask
+
+        if self.interaction_blocks:
+            n = x.shape[1]
+            xi = x.unsqueeze(2).expand(-1, -1, n, -1)
+            xj = x.unsqueeze(1).expand(-1, n, -1, -1)
+            edge_mask = (mask @ mask.transpose(-1, -2)).unsqueeze(-1)  # (B, N, N, 1)
+            edge_feats = torch.cat(
+                [
+                    get_mass(xi, xj, edge_mask, is_log=True),
+                    get_dr(xi, xj, edge_mask, is_log=True),
+                    get_kt(xi, xj, edge_mask, is_log=True),
+                ],
+                dim=-1,
+            )
+            for norm, blk in zip(self.interaction_norms, self.interaction_blocks):
+                h = h + blk(norm(h), edge_feats, edge_mask) * mask
 
         for norm, phi in zip(self.phi_norms, self.phi_blocks):
             h = h + phi(norm(h)) * mask  # pre-norm residual; padded stays 0
@@ -772,6 +911,9 @@ class DeepSets(nn.Module):
         norm_layer=DynamicTanh,
         act_layer=nn.GELU,
         energy_weighted_pool=False,
+        num_interaction_layers=0,
+        interaction_k=0,
+        fixed_n=0,
     ):
         super().__init__()
         if mode not in ["classifier", "pretrain"]:
@@ -796,6 +938,9 @@ class DeepSets(nn.Module):
             norm_layer=norm_layer,
             act_layer=act_layer,
             energy_weighted_pool=energy_weighted_pool,
+            num_interaction_layers=num_interaction_layers,
+            interaction_k=interaction_k,
+            fixed_n=fixed_n,
         )
 
         self.classifier = DeepSetsHead(

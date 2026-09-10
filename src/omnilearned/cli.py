@@ -146,6 +146,31 @@ def train(
         help="DeepSets only: pool per-particle embeddings weighted by raw pT "
              "instead of a plain masked mean",
     ),
+    num_interaction_layers: int = typer.Option(
+        0,
+        help="DeepSets only: number of particle-particle message-passing "
+             "(GNN) layers inserted before the φ blocks. 0 (default) = plain "
+             "Deep Sets, checkpoint-compatible.",
+    ),
+    interaction_k: int = typer.Option(
+        0,
+        help="DeepSets only: with --num-interaction-layers > 0, keep just the "
+             "leading-pT K constituents before the body (0 = keep all). "
+             "Caps the O(N²) message-passing cost.",
+    ),
+    act_layer: str = typer.Option(
+        "gelu",
+        help="DeepSets only: activation used in every MLP block. 'gelu' "
+             "(default) or 'relu' (hls4ml-friendly; GELU has no ONNX/hls4ml "
+             "lowering).",
+    ),
+    deepsets_fixed_n: int = typer.Option(
+        0,
+        help="DeepSets only: if >0, build the hls4ml-friendly body -- truncate "
+             "to the leading-pT N constituents, drop the in-graph validity "
+             "mask, and plain-mean-pool over all N slots. 0 (default) keeps "
+             "the masked-mean behavior. Must match between train and evaluate.",
+    ),
 ):
     run_training(
         outdir,
@@ -209,6 +234,10 @@ def train(
         distill_cls_teacher_dim=distill_cls_teacher_dim,
         arch=arch,
         energy_weighted_pool=energy_weighted_pool,
+        num_interaction_layers=num_interaction_layers,
+        interaction_k=interaction_k,
+        act_layer=act_layer,
+        deepsets_fixed_n=deepsets_fixed_n,
     )
 
 
@@ -425,6 +454,24 @@ def evaluate(
         help="DeepSets only: pool per-particle embeddings weighted by raw pT "
              "instead of a plain masked mean",
     ),
+    num_interaction_layers: int = typer.Option(
+        0,
+        help="DeepSets only: must match the value used at training time so the "
+             "checkpoint loads (0 = plain Deep Sets).",
+    ),
+    interaction_k: int = typer.Option(
+        0,
+        help="DeepSets only: leading-pT constituent cap; must match training.",
+    ),
+    act_layer: str = typer.Option(
+        "gelu",
+        help="DeepSets only: 'gelu' (default) or 'relu'; must match training.",
+    ),
+    deepsets_fixed_n: int = typer.Option(
+        0,
+        help="DeepSets only: fixed leading-pT N / no-mask body; must match "
+             "training (0 = masked-mean body).",
+    ),
 ):
     run_evaluation(
         indir,
@@ -457,6 +504,10 @@ def evaluate(
         chunk_idx=chunk_idx,
         arch=arch,
         energy_weighted_pool=energy_weighted_pool,
+        num_interaction_layers=num_interaction_layers,
+        interaction_k=interaction_k,
+        act_layer=act_layer,
+        deepsets_fixed_n=deepsets_fixed_n,
     )
 
 

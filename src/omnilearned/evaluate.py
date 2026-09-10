@@ -1,5 +1,5 @@
 import torch
-from omnilearned.network import PET2, DeepSets, MLPStudent
+from omnilearned.network import PET2, DeepSets, MLPStudent, ACT_LAYERS
 from omnilearned.dataloader import load_data
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -232,7 +232,17 @@ def run(
     chunk_idx: int = 0,
     arch: str = "pet2",
     energy_weighted_pool: bool = False,
+    num_interaction_layers: int = 0,
+    interaction_k: int = 0,
+    act_layer: str = "gelu",
+    deepsets_fixed_n: int = 0,
 ):
+    if act_layer not in ACT_LAYERS:
+        raise ValueError(
+            f"--act-layer must be one of {list(ACT_LAYERS)}, got '{act_layer}'"
+        )
+    _act_layer_cls = ACT_LAYERS[act_layer]
+
     local_rank, rank, size = ddp_setup()
 
     # set up model
@@ -267,6 +277,10 @@ def run(
             cond_dim=num_cond,
             mode=mode,
             energy_weighted_pool=energy_weighted_pool,
+            num_interaction_layers=num_interaction_layers,
+            interaction_k=interaction_k,
+            act_layer=_act_layer_cls,
+            fixed_n=deepsets_fixed_n,
             **ds_params,
         )
     elif arch == "mlp":

@@ -2,7 +2,7 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-from omnilearned.network import PET2, DeepSets, MLPStudent
+from omnilearned.network import PET2, DeepSets, MLPStudent, ACT_LAYERS
 from omnilearned.dataloader import load_data
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -620,9 +620,39 @@ def run(
     distill_cls_teacher_dim: int = 1024,
     arch: str = "pet2",
     energy_weighted_pool: bool = False,
+    num_interaction_layers: int = 0,
+    interaction_k: int = 0,
+    act_layer: str = "gelu",
+    deepsets_fixed_n: int = 0,
 ):
     if energy_weighted_pool and arch != "deep-sets":
         raise ValueError("--energy-weighted-pool requires --arch deep-sets.")
+
+    if (num_interaction_layers or interaction_k) and arch != "deep-sets":
+        raise ValueError(
+            "--num-interaction-layers / --interaction-k require --arch deep-sets."
+        )
+
+    if act_layer not in ACT_LAYERS:
+        raise ValueError(
+            f"--act-layer must be one of {list(ACT_LAYERS)}, got '{act_layer}'"
+        )
+    if act_layer != "gelu" and arch != "deep-sets":
+        raise ValueError("--act-layer is only wired for --arch deep-sets.")
+    _act_layer_cls = ACT_LAYERS[act_layer]
+
+    if deepsets_fixed_n:
+        if arch != "deep-sets":
+            raise ValueError("--deepsets-fixed-n requires --arch deep-sets.")
+        if num_interaction_layers:
+            raise ValueError(
+                "--deepsets-fixed-n is not supported with "
+                "--num-interaction-layers (message passing needs the mask)."
+            )
+        if energy_weighted_pool:
+            raise ValueError(
+                "--deepsets-fixed-n is incompatible with --energy-weighted-pool."
+            )
 
     if distill and (not teacher_labels_dir or not teacher_tag):
         raise ValueError(
@@ -700,6 +730,10 @@ def run(
             mode=mode,
             mlp_drop=mlp_drop,
             energy_weighted_pool=energy_weighted_pool,
+            num_interaction_layers=num_interaction_layers,
+            interaction_k=interaction_k,
+            act_layer=_act_layer_cls,
+            fixed_n=deepsets_fixed_n,
             **ds_params,
         )
     elif arch == "mlp":
