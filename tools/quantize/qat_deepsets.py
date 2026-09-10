@@ -23,6 +23,12 @@ Usage:
         --size distillnet --bits 8 \
         --save-tag qat_top_deepsets_distillnet_a05_T4_8bit \
         --epochs 15 --lr 5e-5
+
+For a checkpoint trained with the optional message-passing block, pass the
+SAME --num-interaction-layers / --interaction-k the float run used so the
+architecture (and its state_dict keys) match before restore, e.g.:
+    ... --tag distill_top_deepsets_distillnet_scratch_a05_T4_gnn1_k64 \
+        --num-interaction-layers 1 --interaction-k 64
 """
 
 import argparse
@@ -35,7 +41,7 @@ from diffusers.optimization import get_cosine_schedule_with_warmup
 from pytorch_optimizer import Lion
 
 from omnilearned.dataloader import load_data
-from omnilearned.network import DeepSets
+from omnilearned.network import DeepSets, ACT_LAYERS
 from omnilearned.train import train_model
 from omnilearned.utils import (
     ddp_setup,
@@ -106,12 +112,27 @@ def main():
     ap.add_argument("--distill-alpha", type=float, default=0.5)
     ap.add_argument("--distill-beta", type=float, default=0.5)
     ap.add_argument("--distill-t", type=float, default=4.0)
+    ap.add_argument("--num-interaction-layers", type=int, default=0,
+                    help="must match the float checkpoint's message-passing depth")
+    ap.add_argument("--interaction-k", type=int, default=0,
+                    help="must match the float checkpoint's leading-pT constituent cap")
+    ap.add_argument("--act-layer", default="gelu", choices=sorted(ACT_LAYERS),
+                    help="must match the float checkpoint's activation")
+    ap.add_argument("--deepsets-fixed-n", type=int, default=0,
+                    help="must match the float checkpoint's fixed-N/no-mask body (0 = masked-mean)")
     args = ap.parse_args()
 
     local_rank, rank, size = ddp_setup()
 
     ds_params = get_deepsets_parameters(args.size)
-    model = DeepSets(input_dim=4, num_classes=2, mode="classifier", **ds_params)
+    model = DeepSets(
+        input_dim=4, num_classes=2, mode="classifier",
+        num_interaction_layers=args.num_interaction_layers,
+        interaction_k=args.interaction_k,
+        act_layer=ACT_LAYERS[args.act_layer],
+        fixed_n=args.deepsets_fixed_n,
+        **ds_params,
+    )
     restore_checkpoint(
         model, CHECKPOINT_DIR, get_checkpoint_name(args.tag), local_rank, is_main_node=is_master_node()
     )

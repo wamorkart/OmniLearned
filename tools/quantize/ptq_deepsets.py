@@ -57,6 +57,7 @@ class PTQLinear(nn.Module):
         self.act_min = None
         self.act_max = None
         self.bits = None  # None => float passthrough
+        self.quant_weights = True  # False => quantize inputs only, weights stay float
 
     def forward(self, x):
         if self.calibrating:
@@ -81,7 +82,7 @@ class PTQLinear(nn.Module):
             return self.linear(x)
 
         xq = _fake_quant_static(x, self.act_min, self.act_max, self.bits)
-        wq = _fake_quant_weight(self.linear.weight, self.bits)
+        wq = _fake_quant_weight(self.linear.weight, self.bits) if self.quant_weights else self.linear.weight
         return F.linear(xq, wq, self.linear.bias)
 
     def finalize_calibration(self):
@@ -161,6 +162,12 @@ def main():
         "--percentile", type=float, default=0.999,
         help="calibration clip percentile (e.g. 0.999 keeps the 0.1%%-99.9%% range)",
     )
+    ap.add_argument(
+        "--weights-float", action="store_true",
+        help="quantize only the linear-layer INPUTS to the target bit width; "
+             "leave weights in float. Matches the 'i8' (inputs-only) column of "
+             "Petitjean et al. arXiv:2512.17011 Table 6.",
+    )
     args = ap.parse_args()
 
     local_rank, rank, size = ddp_setup()
@@ -176,7 +183,10 @@ def main():
     print(f"Loaded {args.tag} ({args.size}): {n_params:,} params")
 
     wrappers = wrap_linears(model, percentile=args.percentile)
-    print(f"Wrapped {len(wrappers)} nn.Linear layers for PTQ (calib percentile={args.percentile})")
+    for w in wrappers:
+        w.quant_weights = not args.weights_float
+    mode = "inputs-only (weights float)" if args.weights_float else "inputs + weights"
+    print(f"Wrapped {len(wrappers)} nn.Linear layers for PTQ (calib percentile={args.percentile}, quant: {mode})")
 
     calib_loader = load_data(
         "top", dataset_type="val", use_cond=True, path=DATA_PATH, batch=args.batch,

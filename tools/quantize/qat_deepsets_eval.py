@@ -21,7 +21,7 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from tqdm.auto import tqdm
 
 from omnilearned.dataloader import load_data
-from omnilearned.network import DeepSets
+from omnilearned.network import DeepSets, ACT_LAYERS
 from omnilearned.utils import (
     ddp_setup,
     get_checkpoint_name,
@@ -55,13 +55,28 @@ def main():
     ap.add_argument("--bits", type=int, required=True, help="must match the bit width used in training")
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--num-workers", type=int, default=4)
+    ap.add_argument("--num-interaction-layers", type=int, default=0,
+                    help="must match the QAT checkpoint's message-passing depth")
+    ap.add_argument("--interaction-k", type=int, default=0,
+                    help="must match the QAT checkpoint's leading-pT constituent cap")
+    ap.add_argument("--act-layer", default="gelu", choices=sorted(ACT_LAYERS),
+                    help="must match the QAT checkpoint's activation")
+    ap.add_argument("--deepsets-fixed-n", type=int, default=0,
+                    help="must match the QAT checkpoint's fixed-N/no-mask body (0 = masked-mean)")
     args = ap.parse_args()
 
     local_rank, rank, size = ddp_setup()
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     ds_params = get_deepsets_parameters(args.size)
-    model = DeepSets(input_dim=4, num_classes=2, mode="classifier", **ds_params)
+    model = DeepSets(
+        input_dim=4, num_classes=2, mode="classifier",
+        num_interaction_layers=args.num_interaction_layers,
+        interaction_k=args.interaction_k,
+        act_layer=ACT_LAYERS[args.act_layer],
+        fixed_n=args.deepsets_fixed_n,
+        **ds_params,
+    )
 
     wrap_linears_qat(model, weight_bits=args.bits, act_bits=args.bits)
     n_qlin = sum(1 for m in model.modules() if type(m).__name__ == "QuantLinear")
