@@ -35,6 +35,11 @@ declare -A LOOP_CFG=(
     [top_deepsets_wd005]="$LOG_BASE/distill_loop_top_deepsets_wd005|8"
     [top_deepsets_ewpool]="$LOG_BASE/distill_loop_top_deepsets_ewpool|8"
     [top_deepsets_distillnet]="$LOG_BASE/distill_loop_top_deepsets_distillnet|8"
+    [top_deepsets_distillnet_fpga]="$LOG_BASE/distill_loop_top_deepsets_distillnet_fpga|8"
+    [top_deepsets_distillnet_gnn]="$LOG_BASE/distill_loop_top_deepsets_distillnet_gnn|8"
+    [top_deepsets_nano]="$LOG_BASE/distill_loop_top_deepsets_nano|8"
+    [top_deepsets_micro]="$LOG_BASE/distill_loop_top_deepsets_micro|8"
+    [top_deepsets_tiny]="$LOG_BASE/distill_loop_top_deepsets_tiny|8"
     [top_deepsets_teachS]="$LOG_BASE/distill_loop_top_deepsets_teachS|8"
     [top_deepsets_ce]="$LOG_BASE/distill_loop_top_deepsets_ce|8"
     [qg_a05]="$LOG_BASE/distill_loop_qg_a05|8"
@@ -42,6 +47,9 @@ declare -A LOOP_CFG=(
     [top_medium_a00_b10]="$SWEEP/distill_top_medium_scratch_a00_b10_T4|50"
     [top_medium_a05_b05]="$SWEEP/distill_top_medium_scratch_a05_b05_T4|50"
     [top_small_via_medium_a00_b10]="$SWEEP/distill_top_small_via_medium_a00_b10_T4|50"
+    [top_l_scratch]="$LOG_BASE/train_loop_top_l_scratch|30"
+    [top_small_a05_teacherscratch]="$LOG_BASE/distill_loop_top_teacherscratch|20"
+    [top_deepsets_distillnet_gnn_teacherscratch]="$LOG_BASE/distill_loop_top_deepsets_distillnet_gnn_teacherscratch|8"
 )
 
 entry="${LOOP_CFG[$CONFIG]:-}"
