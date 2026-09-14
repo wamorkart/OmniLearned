@@ -13,6 +13,7 @@ checks/ab_fp32/
 top/
 logs/
 x/
+LHCO/
 
 # Claude Code session-local settings/tooling
 .claude/
