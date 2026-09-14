@@ -1,0 +1,30 @@
+{
+  "pet2_small": {
+    "arch": "pet2",
+    "size": "small",
+    "params": 2708917,
+    "fwd_flops_at_N47": 426993360,
+    "macs_at_N47": 213496680
+  },
+  "pet2_micro": {
+    "arch": "pet2",
+    "size": "micro",
+    "params": 549349,
+    "fwd_flops_at_N47": 95945168,
+    "macs_at_N47": 47972584
+  },
+  "deepsets_small": {
+    "arch": "deepsets",
+    "size": "small",
+    "params": 298887,
+    "fwd_flops_at_N47": 15759872,
+    "macs_at_N47": 7879936
+  },
+  "deepsets_distillnet": {
+    "arch": "deepsets",
+    "size": "distillnet",
+    "params": 10981,
+    "fwd_flops_at_N47": 609920,
+    "macs_at_N47": 304960
+  }
+}
