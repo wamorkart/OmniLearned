@@ -15,6 +15,11 @@ requested bit width.
 Usage:
     python ptq_deepsets.py --tag distill_top_deepsets_distillnet_scratch_a05_T4 \
         --size distillnet --bits 8,6,4
+
+    # student with the message-passing block: pass the SAME interaction flags
+    # the float run used so the checkpoint restores into the same graph
+    python ptq_deepsets.py --tag distill_top_deepsets_distillnet_scratch_a05_T4_gnn1_k64 \
+        --size distillnet --num-interaction-layers 1 --interaction-k 64 --bits 8,6,4
 """
 
 import argparse
@@ -38,6 +43,7 @@ from omnilearned.utils import (
 CHECKPOINT_DIR = "/pscratch/sd/t/twamorka/omnilearned/checkpoints/"
 DATA_PATH = "/global/cfs/cdirs/m4567/www/"
 SIGNAL_EFFS = [0.50, 0.30]
+_QUANTILE_MAX = 2**24  # torch.quantile's input-size limit
 
 
 class PTQLinear(nn.Module):
@@ -62,6 +68,12 @@ class PTQLinear(nn.Module):
     def forward(self, x):
         if self.calibrating:
             flat = x.detach().reshape(-1)
+            # torch.quantile refuses inputs above 2**24 elements; the all-pairs
+            # input of the message-passing block (B x K x K x 67) exceeds that,
+            # so estimate the percentiles on a uniform random subsample.
+            if flat.numel() > _QUANTILE_MAX:
+                idx = torch.randint(flat.numel(), (_QUANTILE_MAX,), device=flat.device)
+                flat = flat[idx]
             # Per-batch percentile clipping instead of raw min/max: a single
             # extreme-pT jet in the calibration set otherwise blows up the
             # scale and crushes the useful dynamic range into a handful of
@@ -162,6 +174,10 @@ def main():
         "--percentile", type=float, default=0.999,
         help="calibration clip percentile (e.g. 0.999 keeps the 0.1%%-99.9%% range)",
     )
+    ap.add_argument("--num-interaction-layers", type=int, default=0,
+                    help="message-passing blocks; must match the float run (0 = plain DeepSets)")
+    ap.add_argument("--interaction-k", type=int, default=0,
+                    help="leading-pT constituents kept by the message-passing block")
     ap.add_argument(
         "--weights-float", action="store_true",
         help="quantize only the linear-layer INPUTS to the target bit width; "
@@ -174,7 +190,12 @@ def main():
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     ds_params = get_deepsets_parameters(args.size)
-    model = DeepSets(input_dim=4, num_classes=2, mode="classifier", **ds_params)
+    model = DeepSets(
+        input_dim=4, num_classes=2, mode="classifier",
+        num_interaction_layers=args.num_interaction_layers,
+        interaction_k=args.interaction_k,
+        **ds_params,
+    )
     restore_checkpoint(
         model, CHECKPOINT_DIR, get_checkpoint_name(args.tag), local_rank, is_main_node=True
     )
