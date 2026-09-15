@@ -16,7 +16,7 @@
 #
 # Run inside an salloc GPU interactive job:
 #   salloc -C gpu -q interactive -t 240 --nodes 4 --ntasks-per-node 4 --gpus-per-node 4 -A m3246
-# and then run bash fine_tune_lhco_ad.sh
+# and then (from scripts/lhco/) run bash fine_tune_lhco_ad.sh
 
 module load conda
 conda activate ol_distill
@@ -26,7 +26,7 @@ conda activate ol_distill
 # omnilearned to the MAIN checkout (.../OmniLearned_distillation/src) via a
 # .pth file. Without this, the job silently runs that branch's code instead of
 # this worktree's. PYTHONPATH is searched before site-packages .pth entries.
-export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
 
 export MASTER_ADDR=$(hostname)
 export NCCL_TIMEOUT=600000
@@ -44,7 +44,7 @@ DATASET=lhco_ad
 PRETRAIN_TAG=pretrain_s
 SIZE=small
 NSIG=10000
-DESCRIPT_TAG=test6
+DESCRIPT_TAG=test7
 # ============================================================
 
 SAVE_TAG="${SAVE_TAG_BASE}_${DATASET}_nsig${NSIG}_${DESCRIPT_TAG}"

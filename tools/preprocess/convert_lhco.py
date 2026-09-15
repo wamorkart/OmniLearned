@@ -82,21 +82,12 @@ def apply_pt_cut(data):
     return data * valid[..., None], valid
 
 
-def build_rows(paths, pid_label, nsig=None, rng=None):
-    """Load one sample, apply the pT cut, optionally cap events at `nsig`
-    (sampled w/o replacement), and merge each event's two jets into one row.
-    `data`'s last 2 columns are a one-hot marking which jet each particle
-    came from. `global` = mjj + each jet's own (log pT, eta, phi, log mass,
-    multiplicity/100). pid_label is the classifier's training label
-    (0=background, 1=data), one per event."""
-    jet, data, mjj = load_source(paths)
-    data, valid = apply_pt_cut(data)
-
-    n = jet.shape[0]
-    evt_sel = np.ones(n, dtype=bool)
-    if nsig is not None and nsig < n:
-        evt_sel[:] = False
-        evt_sel[rng.choice(n, size=nsig, replace=False)] = True
+def rows_from_selection(jet, data, valid, mjj, evt_sel, pid_label):
+    """The merge/one-hot/global body of build_rows, split out so other
+    callers (e.g. build_lhco_eval_signal.py, reconstructing the complement of
+    an nsig-capping draw) can reuse it with their own event-selection mask.
+    `data`'s last 2 columns one-hot which jet each particle came from;
+    `global` = mjj + each jet's (log pT, eta, phi, log mass, mult/100)."""
     pid = np.full(evt_sel.sum(), pid_label, dtype=np.int64)
 
     data_blocks = []
@@ -124,6 +115,23 @@ def build_rows(paths, pid_label, nsig=None, rng=None):
         "pid": pid,
         "global": np.concatenate(global_cols, axis=-1).astype(np.float32),
     }
+
+
+def build_rows(paths, pid_label, nsig=None, rng=None):
+    """Load one sample, apply the pT cut, optionally cap events at `nsig`
+    (sampled w/o replacement), and merge via rows_from_selection. pid_label
+    is the classifier's training label (0=background, 1=data), one per
+    event."""
+    jet, data, mjj = load_source(paths)
+    data, valid = apply_pt_cut(data)
+
+    n = jet.shape[0]
+    evt_sel = np.ones(n, dtype=bool)
+    if nsig is not None and nsig < n:
+        evt_sel[:] = False
+        evt_sel[rng.choice(n, size=nsig, replace=False)] = True
+
+    return rows_from_selection(jet, data, valid, mjj, evt_sel, pid_label)
 
 
 def global_zscore_stats(global_arr):

@@ -1,14 +1,21 @@
 #!/bin/bash
+
+# needed to get the held-out background test set evaluate output
+
 # Evaluate the model fine-tuned on the idealized LHCO anomaly-detection
 # dataset (lhco_ad) on a split -- scores go to outputs_<save-tag>_*.npz,
 # with `prediction`/`logits` = the classifier's data-vs-background score
 # and `cond` = global (mjj, then per-jet log pT/eta/phi/log mass/mult).
 #
 # EDIT THESE to match the fine_tune_lhco_ad.sh run being evaluated.
+# --interaction/--local-interaction below must ALSO match that run's flags
+# exactly -- --local-interaction changes local_physics' MLP input width
+# (4 -> 7, see layers.py's LocalEmbeddingBlock), so a mismatch here fails
+# checkpoint loading with a shape-mismatch RuntimeError, not a silent bug.
 #
 # Run inside an salloc GPU interactive job, e.g.:
 #   salloc -C gpu -q interactive -t 60 --nodes 1 --ntasks-per-node 4 --gpus-per-node 4 -A m3246
-# then run bash evaluate_lhco_ad.sh
+# then (from scripts/lhco/) run bash evaluate_lhco_ad.sh
 
 module load conda
 conda activate ol_distill
@@ -16,7 +23,7 @@ conda activate ol_distill
 
 # See fine_tune_lhco_ad.sh: ol_distill's editable install points at the main
 # checkout, so this worktree's code only wins if it is on PYTHONPATH.
-export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
 
 export MASTER_ADDR=$(hostname)
 
@@ -28,8 +35,8 @@ export MASTER_ADDR=$(hostname)
 SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
 SIZE=small
-# NSIG=500
-DESCRIPT_TAG=pure_test1
+NSIG=10000
+DESCRIPT_TAG=test7
 DATASET_TYPE=${DATASET_TYPE:-test}
 QUANTIZATION=none                          # "none", "int8", "int8dq", or "bf16"
 # ============================================================
@@ -44,8 +51,8 @@ esac
 
 SAVE_TAG="${SAVE_TAG_BASE}_${DATASET}_nsig${NSIG}_${DESCRIPT_TAG}"
 CHECKPOINT_DIR=/pscratch/sd/m/mbenyas/LHCO
-# LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/nsig_${NSIG}"
-LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/pure_test"
+LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/nsig_${NSIG}"
+# LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/pure_test"
 OUTPUT_DIR=/pscratch/sd/m/mbenyas/${SAVE_TAG}_${QUANTIZATION}
 
 mkdir -p "$OUTPUT_DIR"
@@ -60,8 +67,9 @@ cmd="omnilearned evaluate \
     --size ${SIZE} \
     --use-add --num-add 2 \
     --conditional --num-cond 11 \
+    --interaction --local-interaction \
     --num-classes 2 \
-    --batch 128 \
+    --batch 16 \
     --num-workers 4 \
     --dataset-type $DATASET_TYPE"
 
