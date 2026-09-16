@@ -31,8 +31,8 @@ export MASTER_ADDR=$(hostname)
 SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
 SIZE=small
-NSIG=10000
-DESCRIPT_TAG=test7
+NSIG=1000
+DESCRIPT_TAG=r1
 QUANTIZATION=none
 # ============================================================
 

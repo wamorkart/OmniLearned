@@ -43,8 +43,8 @@ SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
 PRETRAIN_TAG=pretrain_s
 SIZE=small
-NSIG=10000
-DESCRIPT_TAG=test7
+NSIG=1000
+DESCRIPT_TAG=r1
 # ============================================================
 
 SAVE_TAG="${SAVE_TAG_BASE}_${DATASET}_nsig${NSIG}_${DESCRIPT_TAG}"
@@ -67,7 +67,7 @@ cmd="omnilearned train \
   --conditional --num-cond 11 \
   --interaction --local-interaction \
   --iterations 1000 \
-  --batch 16 --epoch 10 --wd 0.01 --lr 1e-5 --lr-factor 10.0 \
+  --batch 16 --epoch 20 --wd 0.01 --lr 1e-5 --lr-factor 10.0 \
   --num-workers 4 \
   --wandb --resuming"
 

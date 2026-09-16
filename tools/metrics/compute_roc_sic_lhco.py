@@ -22,8 +22,8 @@ GRAY = "#8a8a86"
 # ============================================================
 SAVE_TAG_BASE = "fine_tune_pretrain_s"
 DATASET = "lhco_ad"
-NSIG = 10000
-DESCRIPT_TAG = "test7"
+NSIG = 1000
+DESCRIPT_TAG = "r1"
 QUANTIZATION = "none"
 
 # Drop FPR below this before max-SIC -- matches evaluate_classifiers_lhco.py
@@ -65,11 +65,10 @@ def max_sic(fpr, tpr, fpr_floor):
     return np.max(tpr / np.sqrt(fpr)), len(fpr)
 
 
-def plot_roc_sic(fpr, tpr, auc, sic, fpr_floor, outfile):
+def plot_roc_sic(fpr, tpr, auc, sic, outfile):
     """ROC (with the random-classifier diagonal) beside SIC=TPR/sqrt(FPR)
-    vs FPR (with the random baseline at SIC=1 and the fpr_floor cutoff
-    marked) -- both x-axes log-scaled, standard for HEP background
-    rejection."""
+    vs FPR (with the random baseline at SIC=1) -- both x-axes log-scaled,
+    standard for HEP background rejection."""
     sic_curve = np.divide(tpr, np.sqrt(fpr), out=np.zeros_like(tpr), where=fpr > 0)
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
@@ -88,7 +87,6 @@ def plot_roc_sic(fpr, tpr, auc, sic, fpr_floor, outfile):
     ax = axes[1]
     ax.plot(fpr, sic_curve, color=BLUE, linewidth=2, label="classifier")
     ax.axhline(1.0, color=GRAY, linestyle="--", linewidth=1.5, label="random (SIC=1)")
-    ax.axvline(fpr_floor, color=GRAY, linestyle=":", linewidth=1, label=f"FPR floor={fpr_floor:g}")
     ax.set_xscale("log")
     ax.set_xlim(1e-4, 1)
     ax.set_xlabel("false positive rate (background efficiency)")
@@ -128,7 +126,7 @@ def main():
     print(f"Max SIC : {sic:.4f}  (FPR floor={FPR_FLOOR:g}, {n_surviving:,} ROC points survive)")
     print("Reference: a random classifier's max-SIC is 1.0, not 0.")
 
-    plot_roc_sic(fpr, tpr, auc, sic, FPR_FLOOR, f"roc_sic_{SAVE_TAG}.png")
+    plot_roc_sic(fpr, tpr, auc, sic, f"roc_sic_{SAVE_TAG}.png")
 
 
 if __name__ == "__main__":
