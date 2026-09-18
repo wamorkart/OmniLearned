@@ -67,7 +67,8 @@ def wrap_linears_qat(model, weight_bits, act_bits):
     name checks, save_checkpoint's model.module.body.state_dict() -- keeps
     working unmodified."""
     import brevitas.nn as qnn
-    from brevitas.quant.scaled_int import Int8ActPerTensorFloat, Int8WeightPerTensorFloat
+    # Power-of-2 scales: in firmware each scale is a bit shift, not a multiplier.
+    from brevitas.quant import Int8ActPerTensorFixedPoint, Int8WeightPerTensorFixedPoint
 
     targets = []
     for module in model.modules():
@@ -80,9 +81,9 @@ def wrap_linears_qat(model, weight_bits, act_bits):
             child.in_features,
             child.out_features,
             bias=child.bias is not None,
-            weight_quant=Int8WeightPerTensorFloat,
+            weight_quant=Int8WeightPerTensorFixedPoint,
             weight_bit_width=weight_bits,
-            input_quant=Int8ActPerTensorFloat,
+            input_quant=Int8ActPerTensorFixedPoint,
             input_bit_width=act_bits,
             return_quant_tensor=False,
         )
