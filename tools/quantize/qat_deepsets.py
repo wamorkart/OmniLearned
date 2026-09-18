@@ -141,6 +141,32 @@ def main():
         print(f"Warm-started from {args.tag} ({args.size}): {n_params:,} params")
 
     wrap_linears_qat(model, weight_bits=args.bits, act_bits=args.bits)
+    # Saved into the checkpoint so the exact quantized network can be rebuilt for
+    # FPGA conversion. Quantizer types and bit widths are read back from the
+    # wrapped layers, so the record always matches what was trained.
+    qlin = next(m for m in model.modules() if type(m).__name__ == "QuantLinear")
+    model.arch_config = {
+        "arch": "deep-sets",
+        "size": args.size,
+        "dims": ds_params,
+        "input_dim": 4,
+        "num_classes": 2,
+        "act_layer": args.act_layer,
+        "fixed_n": args.deepsets_fixed_n,  # 0 = masked mean over valid particles
+        "num_interaction_layers": args.num_interaction_layers,
+        "interaction_k": args.interaction_k,
+        "energy_weighted_pool": False,
+        "pid": False,
+        "add_info": False,
+        "conditional": False,
+        "quant": {
+            "scope": "every nn.Linear: weight and input",
+            "weight_quant": qlin.weight_quant.quant_injector.__name__,
+            "act_quant": qlin.input_quant.quant_injector.__name__,
+            "weight_bits": int(qlin.weight_quant.bit_width()),
+            "act_bits": int(qlin.input_quant.bit_width()),
+        },
+    }
     if is_master_node():
         n_qlin = sum(1 for m in model.modules() if type(m).__name__ == "QuantLinear")
         print(f"Wrapped {n_qlin} nn.Linear layers as Brevitas QuantLinear ({args.bits}-bit)")
