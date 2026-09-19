@@ -5,10 +5,20 @@ import torch
 import torch.nn as nn
 from typing import Tuple
 from copy import deepcopy
+from datetime import timedelta
 import torch.distributed as dist
 from torch.distributed import init_process_group, get_rank
 import torch.nn.functional as F
 import requests
+
+# Default NCCL collective timeout (30 min) is too tight for the pretrain-scale
+# distillation jobs: lazy per-sample HDF5 reads across thousands of companion
+# teacher-logit shards occasionally stall one rank long enough to trip the
+# watchdog and force-abort the whole 16-GPU job. Widen it so a slow shard open
+# degrades throughput instead of killing hours of training.
+# Overridable via DDP_TIMEOUT_MIN so a debugging run can shorten it (fail fast
+# and get a live-attach window) without touching this default for real runs.
+DDP_TIMEOUT = timedelta(minutes=int(os.environ.get("DDP_TIMEOUT_MIN", "90")))
 
 
 def get_model_parameters(model_size):
@@ -36,10 +46,73 @@ def get_model_parameters(model_size):
         model_dict["num_heads"] = 32
         model_dict["base_dim"] = 1024
         model_dict["mlp_ratio"] = 2
+
+    elif model_size == "micro":
+        model_dict["num_transformers"] = 4
+        model_dict["num_transformers_head"] = 2
+        model_dict["num_tokens"] = 4
+        model_dict["num_heads"] = 4
+        model_dict["base_dim"] = 64
+        model_dict["mlp_ratio"] = 2   
     else:
         raise ValueError(f"Invalid model size: {model_size}")
 
     return model_dict
+
+
+def get_deepsets_parameters(model_size):
+    """Architecture params for DeepSets (φ depth, ρ depth, hidden dim).
+
+    Params scale as roughly 16*base_dim^2 (every block is a
+    base_dim -> mlp_ratio*base_dim -> base_dim sandwich, and small/medium/large
+    use 5/7/9 such blocks).
+
+    The small/medium/large ladder was inherited from the PET2 transformer size
+    ladder, NOT chosen against an FPGA resource budget -- "small" is 298,887
+    params, ~28x the ~10.5k of the DistillNet student (arXiv:2311.12551) and
+    ~75x the classic hls4ml jet tagger. The four sizes below fill in that gap:
+
+        nano       base_dim=16  phi=3 rho=2 ->    5,111 params
+        distillnet base_dim=32  phi=2 rho=1 ->   10,981 params  (~DistillNet parity)
+        micro      base_dim=32  phi=3 rho=2 ->   19,431 params
+        tiny       base_dim=64  phi=3 rho=2 ->   75,719 params
+        small      base_dim=128 phi=3 rho=2 ->  298,887 params  (unchanged)
+
+    nano/micro/tiny/small vary ONLY base_dim at fixed depth, so they form a
+    clean width-only accuracy-vs-params curve. `distillnet` additionally drops
+    depth to match the reference paper's shape and is the odd one out -- do not
+    put it on the width curve.
+    """
+    if model_size == "nano":
+        return {"base_dim": 16, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "distillnet":
+        return {"base_dim": 32, "num_phi_layers": 2, "num_rho_layers": 1}
+    elif model_size == "micro":
+        return {"base_dim": 32, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "tiny":
+        return {"base_dim": 64, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "small":
+        return {"base_dim": 128, "num_phi_layers": 3, "num_rho_layers": 2}
+    elif model_size == "medium":
+        return {"base_dim": 256, "num_phi_layers": 4, "num_rho_layers": 3}
+    elif model_size == "large":
+        return {"base_dim": 512, "num_phi_layers": 5, "num_rho_layers": 4}
+    else:
+        raise ValueError(f"Invalid model size: {model_size}")
+
+
+def get_mlp_parameters(model_size):
+    """Architecture params for the minimal MLP student (hidden dim only)."""
+    if model_size == "micro":
+        return {"hidden_dim": 32}
+    elif model_size == "small":
+        return {"hidden_dim": 64}
+    elif model_size == "medium":
+        return {"hidden_dim": 128}
+    elif model_size == "large":
+        return {"hidden_dim": 256}
+    else:
+        raise ValueError(f"Invalid model size: {model_size}")
 
 
 def print_metrics(y_preds_np, y_np, thresholds=[0.3, 0.5], background_class=0):
@@ -215,6 +288,7 @@ def get_loss(
     clip_loss,
     logs,
     data_pid=None,
+    sample_weight=None,
 ):
     loss = 0.0
     if outputs["y_pred"] is not None:
@@ -222,10 +296,15 @@ def get_loss(
             loss_class = torch.mean(class_cost(outputs["y_pred"], y))
             logs["loss_class"] += loss_class.detach()
         else:
-            counts = torch.bincount(y, minlength=outputs["y_pred"].shape[-1]).float()
-            class_weights = 1.0 / (counts + 1e-6)
-            weights = class_weights[y]
-            weights = weights / weights.mean()
+            if sample_weight is not None:
+                weights = sample_weight
+            else:
+                counts = torch.bincount(
+                    y, minlength=outputs["y_pred"].shape[-1]
+                ).float()
+                class_weights = 1.0 / (counts + 1e-6)
+                weights = class_weights[y]
+                weights = weights / weights.mean()
 
             loss_class = get_class_loss(
                 weights, outputs["y_pred"], y, class_cost, use_event_loss, logs
@@ -285,13 +364,39 @@ def get_loss(
     return loss
 
 
-def get_distill_loss(student_logits, teacher_logits, distill_T=4.0):
-    """KL divergence between student and pre-saved teacher logits at temperature T."""
+def _standardize_logits(z, eps=1e-7):
+    """Per-sample Z-score along the class dim (Logit Standardization in KD,
+    CVPR 2024, arXiv:2403.01427). Makes each logit vector zero-mean / unit-std
+    so the KL matches the *shape* of the teacher distribution rather than its
+    absolute range -- decouples teacher/student logit magnitude, which is the
+    point of the method for a large-teacher / small-student gap."""
+    z = z - z.mean(dim=-1, keepdim=True)
+    return z / (z.std(dim=-1, keepdim=True) + eps)
+
+
+def get_distill_loss(student_logits, teacher_logits, distill_T=4.0, standardize=False):
+    """KL divergence between student and pre-saved teacher logits at temperature T.
+
+    If ``standardize`` is set, both logit vectors are Z-scored per sample before
+    the softmax (logit standardization); ``distill_T`` is then applied to the
+    already unit-std logits.
+    """
+    if standardize:
+        teacher_logits = _standardize_logits(teacher_logits)
+        student_logits = _standardize_logits(student_logits)
     soft_teacher = F.softmax(teacher_logits / distill_T, dim=-1)
     log_soft_student = F.log_softmax(student_logits / distill_T, dim=-1)
     return (distill_T**2) * F.kl_div(
         log_soft_student, soft_teacher, reduction="batchmean"
     )
+
+
+def get_distill_cls_loss(student_embed, teacher_embed, projector):
+    """MSE between the teacher's pre-saved flattened body-token embedding and
+    the student's own (live) flattened body-token embedding, projected up to
+    the teacher's dim. `projector` is the student model's own `cls_projector`
+    submodule (trained jointly, dropped at inference)."""
+    return F.mse_loss(projector(student_embed), teacher_embed)
 
 
 def save_checkpoint(
@@ -303,6 +408,8 @@ def save_checkpoint(
     lr_scheduler,
     checkpoint_dir,
     checkpoint_name,
+    best_loss=None,
+    best_epoch=None,
 ):
     save_dict = {
         "body": model.module.body.state_dict(),
@@ -311,12 +418,23 @@ def save_checkpoint(
         "loss": loss,
         "sched": lr_scheduler.state_dict(),
     }
+    if best_loss is not None:
+        save_dict["best_loss"] = best_loss
+    if best_epoch is not None:
+        save_dict["best_epoch"] = best_epoch
 
     if model.module.classifier is not None:
         save_dict["classifier_head"] = model.module.classifier.state_dict()
 
     if model.module.generator is not None:
         save_dict["generator_head"] = model.module.generator.state_dict()
+
+    if hasattr(model.module, "cls_projector"):
+        save_dict["cls_projector"] = model.module.cls_projector.state_dict()
+
+    if getattr(model.module, "arch_config", None) is not None:
+        save_dict["arch_config"] = model.module.arch_config
+
     if ema_model is not None:
         save_dict["ema_body"] = ema_model.body.state_dict()
         if model.module.generator is not None:
@@ -384,10 +502,16 @@ def restore_checkpoint(
                 checkpoint[generator_name], strict=True
             )
 
+        if hasattr(base_model, "cls_projector") and "cls_projector" in checkpoint:
+            base_model.cls_projector.load_state_dict(
+                checkpoint["cls_projector"], strict=True
+            )
+
         if lr_scheduler is not None:
             lr_scheduler.load_state_dict(checkpoint["sched"])
-        startEpoch = checkpoint["epoch"] + 1
-        best_loss = checkpoint["loss"]
+        startEpoch = checkpoint["epoch"]
+        best_loss = checkpoint.get("best_loss", checkpoint["loss"])
+        best_epoch = checkpoint.get("best_epoch", checkpoint["epoch"] - 1)
 
     else:
 
@@ -430,8 +554,17 @@ def restore_checkpoint(
             )
             base_model.generator.load_state_dict(filtered_state, strict=False)
 
+        if hasattr(base_model, "cls_projector") and "cls_projector" in checkpoint:
+            filtered_state = filter_partial_model(
+                checkpoint["cls_projector"],
+                base_model.cls_projector.state_dict(),
+                is_main_node,
+            )
+            base_model.cls_projector.load_state_dict(filtered_state, strict=False)
+
         startEpoch = 0.0
         best_loss = np.inf
+        best_epoch = 0.0
 
     if ema_model is not None:
         if fine_tune:
@@ -444,14 +577,14 @@ def restore_checkpoint(
                     checkpoint["ema_generator"], strict=True
                 )
 
-    if optimizer is not None:
+    if optimizer is not None and not fine_tune:
         try:
             optimizer.load_state_dict(checkpoint["optimizer"])
         except Exception:
             if is_main_node:
                 print("Optimizer cannot be loaded back, skipping...")
 
-    return startEpoch, best_loss
+    return startEpoch, best_loss, best_epoch
 
 
 def shadow_copy(model):
@@ -544,6 +677,10 @@ def get_checkpoint_name(tag):
     return f"best_model_{tag}.pt"
 
 
+def get_last_checkpoint_name(tag):
+    return f"last_model_{tag}.pt"
+
+
 def is_master_node():
     if "RANK" in os.environ:
         return int(os.environ["RANK"]) == 0
@@ -561,10 +698,10 @@ def ddp_setup():
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "2900"
         os.environ["RANK"] = "0"
-        init_process_group(rank=0, world_size=1)
+        init_process_group(rank=0, world_size=1, timeout=DDP_TIMEOUT)
         rank = local_rank = 0
     else:
-        init_process_group(init_method="env://")
+        init_process_group(init_method="env://", timeout=DDP_TIMEOUT)
         # overwrite variables with correct values from env
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = get_rank()

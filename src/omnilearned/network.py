@@ -11,8 +11,16 @@ from omnilearned.layers import (
     DynamicTanh,
     InputBlock,
     TokenAttBlock,
+    get_mass,
+    get_dr,
+    get_kt,
 )
 from omnilearned.diffusion import MPFourier, perturb, get_logsnr_alpha_sigma
+
+# String -> activation class, shared by the CLI and the QAT/export tools so a
+# single spelling ("gelu" | "relu") drives every entry point. ReLU is the
+# hls4ml-friendly choice; GELU has no ONNX/hls4ml lowering.
+ACT_LAYERS = {"gelu": nn.GELU, "relu": nn.ReLU}
 
 
 class PET2(nn.Module):
@@ -605,6 +613,447 @@ class PET_body(nn.Module):
 
         x = self.norm(x) * mask
         return x
+
+
+class DeepSetsInteraction(nn.Module):
+    """One particle-particle message-passing layer for the DeepSets body.
+
+    For every ordered pair (i, j) of constituents a shared edge MLP maps
+    ``[h_i, h_j, e_ij]`` to a message, where ``e_ij`` is a 3-vector of
+    physics edge features (log invariant mass, log ΔR, log k_T) -- the same
+    quantities the PET2 teacher's InteractionBlock uses. Messages are
+    mean-pooled over valid neighbours j; the caller adds the result back to
+    h_i as a pre-norm residual. This is the EdgeConv / Interaction-Network
+    style of graph layer: it makes the body permutation-equivariant while
+    the downstream masked pool keeps the whole model permutation-invariant.
+
+    Cost is O(N²) in the constituent count, so pair it with ``interaction_k``
+    truncation on wide inputs.
+    """
+
+    def __init__(self, base_dim, mlp_ratio=2, mlp_drop=0.0, act_layer=nn.GELU):
+        super().__init__()
+        self.edge_mlp = MLP(
+            2 * base_dim + 3,
+            int(mlp_ratio * base_dim),
+            out_features=base_dim,
+            act_layer=act_layer,
+            drop=mlp_drop,
+        )
+
+    def forward(self, h, edge_feats, edge_mask):
+        # h: (B, N, D), pre-normed by caller
+        # edge_feats: (B, N, N, 3); edge_mask: (B, N, N, 1)
+        n = h.shape[1]
+        hi = h.unsqueeze(2).expand(-1, -1, n, -1)
+        hj = h.unsqueeze(1).expand(-1, n, -1, -1)
+        msg = self.edge_mlp(torch.cat([hi, hj, edge_feats], dim=-1)) * edge_mask
+        denom = edge_mask.sum(dim=2).clamp(min=1.0)  # (B, N, 1)
+        return msg.sum(dim=2) / denom                 # (B, N, D)
+
+
+class DeepSetsBody(nn.Module):
+    """Per-particle φ MLP + masked mean pooling.
+
+    With ``num_interaction_layers > 0`` a stack of :class:`DeepSetsInteraction`
+    message-passing layers runs between the embedding and the φ blocks, adding
+    particle-particle context. ``num_interaction_layers == 0`` (the default)
+    builds no extra modules and is bit-for-bit the original Deep Sets body.
+    """
+
+    def __init__(
+        self,
+        input_dim,
+        base_dim=128,
+        num_layers=3,
+        mlp_ratio=2,
+        mlp_drop=0.0,
+        pid=False,
+        pid_dim=9,
+        add_info=False,
+        add_dim=4,
+        conditional=False,
+        cond_dim=3,
+        norm_layer=DynamicTanh,
+        act_layer=nn.GELU,
+        energy_weighted_pool=False,
+        num_interaction_layers=0,
+        interaction_k=0,
+        fixed_n=0,
+    ):
+        super().__init__()
+        self.pid = pid
+        self.add_info = add_info
+        self.conditional = conditional
+        self.energy_weighted_pool = energy_weighted_pool
+        # 0 => plain Deep Sets; >0 => leading-pT truncation before the body
+        # (constituents are stored pT-descending, so this is a plain slice).
+        self.interaction_k = interaction_k if num_interaction_layers > 0 else 0
+        # >0 => hls4ml-friendly body: fixed leading-pT N slots, no in-graph
+        # validity mask, plain mean pool. Not compatible with the O(N^2)
+        # message-passing path (which needs the mask), so ignore it there.
+        self.fixed_n = int(fixed_n) if num_interaction_layers == 0 else 0
+
+        self.embed = MLP(
+            input_dim,
+            int(mlp_ratio * base_dim),
+            out_features=base_dim,
+            norm_layer=norm_layer,
+            act_layer=act_layer,
+        )
+
+        # pre-norm residual φ blocks
+        self.phi_norms = nn.ModuleList(
+            [norm_layer(base_dim) for _ in range(num_layers - 1)]
+        )
+        self.phi_blocks = nn.ModuleList(
+            [
+                MLP(
+                    base_dim,
+                    int(mlp_ratio * base_dim),
+                    out_features=base_dim,
+                    act_layer=act_layer,
+                    drop=mlp_drop,
+                )
+                for _ in range(num_layers - 1)
+            ]
+        )
+
+        # Optional particle-particle message passing before the φ blocks.
+        # Only instantiated when requested, so state_dict keys (and existing
+        # checkpoints) are unchanged when num_interaction_layers == 0.
+        self.interaction_norms = nn.ModuleList(
+            [norm_layer(base_dim) for _ in range(num_interaction_layers)]
+        )
+        self.interaction_blocks = nn.ModuleList(
+            [
+                DeepSetsInteraction(
+                    base_dim,
+                    mlp_ratio=mlp_ratio,
+                    mlp_drop=mlp_drop,
+                    act_layer=act_layer,
+                )
+                for _ in range(num_interaction_layers)
+            ]
+        )
+
+        if pid:
+            self.pid_embed = nn.Embedding(pid_dim, base_dim, padding_idx=0)
+
+        if add_info:
+            self.add_embed = MLP(
+                add_dim,
+                int(mlp_ratio * base_dim),
+                out_features=base_dim,
+                act_layer=act_layer,
+            )
+
+        if conditional:
+            self.cond_embed = MLP(
+                cond_dim,
+                int(mlp_ratio * base_dim),
+                out_features=base_dim,
+                act_layer=act_layer,
+            )
+
+    def _forward_fixed_n(self, x, cond=None, pid=None, add_info=None):
+        """hls4ml-friendly forward: assume the leading-pT ``fixed_n`` slots,
+        drop the ``x[..., 2] != 0`` validity mask, and plain-mean-pool over
+        all N slots. The model is trained this way, so it learns to tolerate
+        the zero-padded rows folded into the mean. Removes the Equal/Not/Cast
+        and masked-ReduceSum ops that block hls4ml ingestion; the mean is a
+        GlobalAveragePool on export.
+        """
+        n = self.fixed_n
+        if x.shape[1] > n:
+            x = x[:, :n, :]
+            if pid is not None:
+                pid = pid[:, :n]
+            if add_info is not None:
+                add_info = add_info[:, :n, :]
+
+        h = self.embed(x)  # (B, n, D)
+        if pid is not None and self.pid:
+            h = h + self.pid_embed(pid)
+        if add_info is not None and self.add_info:
+            h = h + self.add_embed(add_info)
+
+        for norm, phi in zip(self.phi_norms, self.phi_blocks):
+            h = h + phi(norm(h))  # pre-norm residual, no mask
+
+        z = h.mean(dim=1)  # plain mean over the fixed N slots
+
+        if cond is not None and self.conditional:
+            z = z + self.cond_embed(cond)
+        return z
+
+    def forward(self, x, cond=None, pid=None, add_info=None):
+        if self.fixed_n:
+            return self._forward_fixed_n(x, cond=cond, pid=pid, add_info=add_info)
+
+        if self.interaction_k and x.shape[1] > self.interaction_k:
+            # Keep the leading-pT K constituents. Inputs are stored
+            # pT-descending, so this is a plain slice -- no sort needed.
+            k = self.interaction_k
+            x = x[:, :k, :]
+            if pid is not None:
+                pid = pid[:, :k]
+            if add_info is not None:
+                add_info = add_info[:, :k, :]
+
+        mask = (x[:, :, 2:3] != 0).float()  # (B, N, 1)
+
+        h = self.embed(x) * mask  # (B, N, D)
+
+        if pid is not None and self.pid:
+            h = h + self.pid_embed(pid) * mask
+        if add_info is not None and self.add_info:
+            h = h + self.add_embed(add_info) * mask
+
+        if self.interaction_blocks:
+            n = x.shape[1]
+            xi = x.unsqueeze(2).expand(-1, -1, n, -1)
+            xj = x.unsqueeze(1).expand(-1, n, -1, -1)
+            edge_mask = (mask @ mask.transpose(-1, -2)).unsqueeze(-1)  # (B, N, N, 1)
+            edge_feats = torch.cat(
+                [
+                    get_mass(xi, xj, edge_mask, is_log=True),
+                    get_dr(xi, xj, edge_mask, is_log=True),
+                    get_kt(xi, xj, edge_mask, is_log=True),
+                ],
+                dim=-1,
+            )
+            for norm, blk in zip(self.interaction_norms, self.interaction_blocks):
+                h = h + blk(norm(h), edge_feats, edge_mask) * mask
+
+        for norm, phi in zip(self.phi_norms, self.phi_blocks):
+            h = h + phi(norm(h)) * mask  # pre-norm residual; padded stays 0
+
+        if self.energy_weighted_pool:
+            # weight each particle by its raw pT (feature index 2 is log(pT);
+            # exponentiate then re-mask since exp(0) = 1, not 0)
+            weight = torch.exp(x[:, :, 2:3]) * mask
+            denom = weight.sum(dim=1).clamp(min=1e-8)  # (B, 1)
+            z = (h * weight).sum(dim=1) / denom         # pT-weighted pool → (B, D)
+        else:
+            n_valid = mask.sum(dim=1).clamp(min=1.0)  # (B, 1)
+            z = (h * mask).sum(dim=1) / n_valid        # masked mean pool → (B, D)
+
+        if cond is not None and self.conditional:
+            z = z + self.cond_embed(cond)
+
+        return z
+
+
+class DeepSetsHead(nn.Module):
+    """Global ρ MLP + linear classifier output."""
+
+    def __init__(
+        self,
+        base_dim=128,
+        num_layers=2,
+        mlp_ratio=2,
+        mlp_drop=0.0,
+        num_classes=2,
+        norm_layer=DynamicTanh,
+        act_layer=nn.GELU,
+    ):
+        super().__init__()
+
+        self.rho_norms = nn.ModuleList(
+            [norm_layer(base_dim) for _ in range(num_layers)]
+        )
+        self.rho = nn.ModuleList(
+            [
+                MLP(
+                    base_dim,
+                    int(mlp_ratio * base_dim),
+                    out_features=base_dim,
+                    act_layer=act_layer,
+                    drop=mlp_drop,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.out = nn.Linear(base_dim, num_classes)
+
+    def forward(self, z):
+        for norm, rho in zip(self.rho_norms, self.rho):
+            z = z + rho(norm(z))
+        return self.out(z)
+
+
+class DeepSets(nn.Module):
+    """
+    Deep Sets classifier student for distillation from PET2.
+
+    Drop-in replacement for PET2 in classifier/pretrain mode: same forward()
+    output dict and same .body / .classifier / .generator attributes so
+    save_checkpoint / restore_checkpoint work unchanged.
+    """
+
+    def __init__(
+        self,
+        input_dim,
+        num_classes=2,
+        base_dim=128,
+        num_phi_layers=3,
+        num_rho_layers=2,
+        mlp_ratio=2,
+        mlp_drop=0.0,
+        mode="classifier",
+        pid=False,
+        pid_dim=9,
+        add_info=False,
+        add_dim=4,
+        conditional=False,
+        cond_dim=3,
+        norm_layer=DynamicTanh,
+        act_layer=nn.GELU,
+        energy_weighted_pool=False,
+        num_interaction_layers=0,
+        interaction_k=0,
+        fixed_n=0,
+    ):
+        super().__init__()
+        if mode not in ["classifier", "pretrain"]:
+            raise ValueError(
+                f"DeepSets supports classifier and pretrain modes, got '{mode}'"
+            )
+        self.mode = mode
+        self.generator = None  # checkpoint compatibility with PET2 interface
+
+        self.body = DeepSetsBody(
+            input_dim=input_dim,
+            base_dim=base_dim,
+            num_layers=num_phi_layers,
+            mlp_ratio=mlp_ratio,
+            mlp_drop=mlp_drop,
+            pid=pid,
+            pid_dim=pid_dim,
+            add_info=add_info,
+            add_dim=add_dim,
+            conditional=conditional,
+            cond_dim=cond_dim,
+            norm_layer=norm_layer,
+            act_layer=act_layer,
+            energy_weighted_pool=energy_weighted_pool,
+            num_interaction_layers=num_interaction_layers,
+            interaction_k=interaction_k,
+            fixed_n=fixed_n,
+        )
+
+        self.classifier = DeepSetsHead(
+            base_dim=base_dim,
+            num_layers=num_rho_layers,
+            mlp_ratio=mlp_ratio,
+            mlp_drop=mlp_drop,
+            num_classes=num_classes,
+            norm_layer=norm_layer,
+            act_layer=act_layer,
+        )
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+        self.apply(_init_weights)
+
+    def no_weight_decay(self):
+        return {"norm"}
+
+    def forward(self, x, y, cond=None, pid=None, add_info=None):
+        z = self.body(x, cond=cond, pid=pid, add_info=add_info)  # (B, D)
+        y_pred = self.classifier(z)                               # (B, num_classes)
+        return {
+            "y_pred": y_pred,
+            "y_perturb": None,
+            "z_pred": None,
+            "v": None,
+            "v_weight": None,
+            "x_body": None,
+            "z_body": None,
+            "alpha": torch.ones(x.shape[0], device=x.device),
+        }
+
+
+class MLPStudentBody(nn.Module):
+    """Masked mean-pool over raw per-particle features, then one hidden
+    layer. Unlike DeepSetsBody, there is no per-particle embedding -- the
+    mean is taken directly over the raw kinematic features."""
+
+    def __init__(self, input_dim, hidden_dim=64):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.act = nn.ReLU()
+
+    def forward(self, x, cond=None, pid=None, add_info=None):
+        mask = (x[:, :, 2:3] != 0).float()  # (B, N, 1)
+        n_valid = mask.sum(dim=1).clamp(min=1.0)
+        pooled = (x * mask).sum(dim=1) / n_valid  # masked mean pool -> (B, input_dim)
+        return self.act(self.fc1(pooled))
+
+
+class MLPStudent(nn.Module):
+    """
+    Minimal MLP classifier student for distillation from PET2: masked
+    mean-pool over raw features -> one hidden layer -> linear classifier.
+    No per-particle embedding (unlike DeepSets/PET2) -- intended as a
+    lower-bound baseline, not a competitive architecture.
+
+    Drop-in replacement for PET2/DeepSets in classifier mode: same
+    forward() output dict and same .body / .classifier / .generator
+    attributes so save_checkpoint / restore_checkpoint work unchanged.
+    """
+
+    def __init__(
+        self,
+        input_dim,
+        num_classes=2,
+        hidden_dim=64,
+        mode="classifier",
+    ):
+        super().__init__()
+        if mode != "classifier":
+            raise ValueError(f"MLPStudent supports classifier mode only, got '{mode}'")
+        self.mode = mode
+        self.generator = None  # checkpoint compatibility with PET2 interface
+
+        self.body = MLPStudentBody(input_dim=input_dim, hidden_dim=hidden_dim)
+        self.classifier = nn.Linear(hidden_dim, num_classes)
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+        self.apply(_init_weights)
+
+    def no_weight_decay(self):
+        return set()
+
+    def forward(self, x, y, cond=None, pid=None, add_info=None):
+        z = self.body(x, cond=cond, pid=pid, add_info=add_info)  # (B, D)
+        y_pred = self.classifier(z)                               # (B, num_classes)
+        return {
+            "y_pred": y_pred,
+            "y_perturb": None,
+            "z_pred": None,
+            "v": None,
+            "v_weight": None,
+            "x_body": None,
+            "z_body": None,
+            "alpha": torch.ones(x.shape[0], device=x.device),
+        }
 
 
 class MLPGEN(nn.Module):

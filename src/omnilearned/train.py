@@ -2,7 +2,7 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-from omnilearned.network import PET2
+from omnilearned.network import PET2, DeepSets, MLPStudent, ACT_LAYERS
 from omnilearned.dataloader import load_data
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -15,12 +15,16 @@ from omnilearned.utils import (
     get_param_groups,
     CLIPLoss,
     get_checkpoint_name,
+    get_last_checkpoint_name,
     shadow_copy,
     get_loss,
     get_distill_loss,
+    get_distill_cls_loss,
     save_checkpoint,
     restore_checkpoint,
     get_model_parameters,
+    get_deepsets_parameters,
+    get_mlp_parameters,
 )
 
 import time
@@ -31,8 +35,34 @@ torch.set_float32_matmul_precision("high")
 torch._dynamo.config.verbose = False
 
 
+def _log_heartbeat(epoch, batch_idx):
+    # Cheap per-rank progress+resource probe (no extra deps) to help localize
+    # the 2026-08-07 recurring mid-training NCCL hang: if a worker's RSS/open
+    # file-handle count is climbing toward the node ceiling right before a
+    # rank stops responding, this shows it without needing a live debugger
+    # attach during the hang window.
+    try:
+        with open("/proc/self/status") as f:
+            status = f.read()
+        rss_kb = int(
+            next(l for l in status.splitlines() if l.startswith("VmRSS:")).split()[1]
+        )
+    except Exception:
+        rss_kb = -1
+    try:
+        open_fds = len(os.listdir("/proc/self/fd"))
+    except Exception:
+        open_fds = -1
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    print(
+        f"[heartbeat] rank={rank} epoch={epoch} iter={batch_idx} "
+        f"rss_mb={rss_kb / 1024:.0f} open_fds={open_fds}",
+        flush=True,
+    )
+
+
 def get_logs(device):
-    logs_buff = torch.zeros((6), dtype=torch.float32, device=device)
+    logs_buff = torch.zeros((8), dtype=torch.float32, device=device)
     logs = {}
     logs["loss"] = logs_buff[0].view(-1)
     logs["loss_class"] = logs_buff[1].view(-1)
@@ -40,6 +70,11 @@ def get_logs(device):
     logs["loss_clip"] = logs_buff[3].view(-1)
     logs["loss_class_event"] = logs_buff[4].view(-1)
     logs["loss_kd"] = logs_buff[5].view(-1)
+    logs["loss_cls_mse"] = logs_buff[6].view(-1)
+    # Standardization-independent KD diagnostic (plain KL at distill_T, no
+    # logit standardization) -- lets an A/B on --distill-standardize be
+    # compared on a common metric, since loss_kd itself changes definition.
+    logs["loss_kd_ref"] = logs_buff[7].view(-1)
     return logs
 
 
@@ -57,6 +92,7 @@ def train_step(
     use_event_loss=False,
     iterations_per_epoch=-1,
     use_amp=False,
+    amp_dtype=torch.float16,
     gscaler=None,
     ema_model=None,
     ema_decay=0.9999,
@@ -64,6 +100,12 @@ def train_step(
     distill_alpha=0.5,
     distill_beta=0.5,
     distill_T=4.0,
+    distill_teacher_slice=None,
+    distill_standardize=False,
+    distill_cls=False,
+    distill_gamma=0.5,
+    distill_cls_num_tokens=4,
+    epoch=None,
 ):
     model.train()
 
@@ -75,6 +117,9 @@ def train_step(
     data_iter = iter(dataloader)
 
     for batch_idx in range(iterations_per_epoch):
+        if batch_idx % 100 == 0:
+            _log_heartbeat(epoch, batch_idx)
+
         try:
             batch = next(data_iter)
         except StopIteration:
@@ -96,9 +141,15 @@ def train_step(
         else:
             data_pid = None
 
+        if batch.get("weight") is not None:
+            sample_weight = batch["weight"].to(device, dtype=torch.float)
+        else:
+            sample_weight = None
+
         with amp.autocast(
             "cuda:{}".format(device) if torch.cuda.is_available() else "cpu",
             enabled=use_amp,
+            dtype=amp_dtype,
         ):
             outputs = model(X, y, **model_kwargs)
             loss = get_loss(
@@ -112,6 +163,7 @@ def train_step(
                 clip_loss,
                 logs,
                 data_pid=data_pid,
+                sample_weight=sample_weight,
             )
 
             if distill:
@@ -126,11 +178,37 @@ def train_step(
                         "generate-labels was run for this split."
                     )
                 teacher_logits = batch["teacher_logits"].to(device)
+                if distill_teacher_slice is not None:
+                    teacher_logits = teacher_logits[:, distill_teacher_slice[0]:distill_teacher_slice[1]]
                 loss_kd = get_distill_loss(
-                    outputs["y_pred"], teacher_logits, distill_T=distill_T
+                    outputs["y_pred"], teacher_logits, distill_T=distill_T,
+                    standardize=distill_standardize,
                 )
                 logs["loss_kd"] += loss_kd.detach()
                 loss = distill_alpha * loss + distill_beta * loss_kd
+
+                if distill_cls:
+                    if outputs["x_body"] is None:
+                        raise ValueError(
+                            "--distill-cls requires the model's forward to "
+                            "return x_body (classifier/ftag/regression/pretrain modes)."
+                        )
+                    if batch.get("teacher_cls_embed") is None:
+                        raise ValueError(
+                            "Distillation with --distill-cls enabled but no "
+                            "teacher_cls_embed in batch. Check that "
+                            "tools/preprocess/build_teacher_h5.py was run with --include-cls-embed "
+                            "and --teacher_labels_dir points at those companions."
+                        )
+                    student_embed = outputs["x_body"][
+                        :, :distill_cls_num_tokens
+                    ].reshape(outputs["x_body"].shape[0], -1)
+                    teacher_embed = batch["teacher_cls_embed"].to(device)
+                    loss_cls = get_distill_cls_loss(
+                        student_embed, teacher_embed, model.module.cls_projector
+                    )
+                    logs["loss_cls_mse"] += loss_cls.detach()
+                    loss = loss + distill_gamma * loss_cls
 
         if use_amp and gscaler is not None:
             gscaler.scale(loss).backward()
@@ -174,6 +252,11 @@ def val_step(
     distill_alpha=0.5,
     distill_beta=0.5,
     distill_T=4.0,
+    distill_teacher_slice=None,
+    distill_standardize=False,
+    distill_cls=False,
+    distill_gamma=0.5,
+    distill_cls_num_tokens=4,
 ):
     model.eval()
 
@@ -203,6 +286,11 @@ def val_step(
         else:
             data_pid = None
 
+        if batch.get("weight") is not None:
+            sample_weight = batch["weight"].to(device, dtype=torch.float)
+        else:
+            sample_weight = None
+
         with torch.no_grad():
             outputs = model(X, y, **model_kwargs)
             get_loss(
@@ -216,6 +304,7 @@ def val_step(
                 clip_loss,
                 logs,
                 data_pid=data_pid,
+                sample_weight=sample_weight,
             )
 
             if distill:
@@ -228,10 +317,42 @@ def val_step(
                         "Validation distillation enabled but no teacher_logits in batch."
                     )
                 teacher_logits = batch["teacher_logits"].to(device)
+                if distill_teacher_slice is not None:
+                    teacher_logits = teacher_logits[:, distill_teacher_slice[0]:distill_teacher_slice[1]]
                 loss_kd = get_distill_loss(
-                    outputs["y_pred"], teacher_logits, distill_T=distill_T
+                    outputs["y_pred"], teacher_logits, distill_T=distill_T,
+                    standardize=distill_standardize,
                 )
                 logs["loss_kd"] += loss_kd.detach()
+                # Common-metric diagnostic: plain KL at distill_T regardless of
+                # the standardize flag, so std vs no-std runs are comparable.
+                if distill_standardize:
+                    logs["loss_kd_ref"] += get_distill_loss(
+                        outputs["y_pred"], teacher_logits, distill_T=distill_T,
+                        standardize=False,
+                    ).detach()
+                else:
+                    logs["loss_kd_ref"] += loss_kd.detach()
+
+                if distill_cls:
+                    if outputs["x_body"] is None:
+                        raise ValueError(
+                            "--distill-cls requires the model's forward to "
+                            "return x_body (classifier/ftag/regression/pretrain modes)."
+                        )
+                    if batch.get("teacher_cls_embed") is None:
+                        raise ValueError(
+                            "Validation distillation with --distill-cls enabled "
+                            "but no teacher_cls_embed in batch."
+                        )
+                    student_embed = outputs["x_body"][
+                        :, :distill_cls_num_tokens
+                    ].reshape(outputs["x_body"].shape[0], -1)
+                    teacher_embed = batch["teacher_cls_embed"].to(device)
+                    loss_cls = get_distill_cls_loss(
+                        student_embed, teacher_embed, model.module.cls_projector
+                    )
+                    logs["loss_cls_mse"] += loss_cls.detach()
 
     if dist.is_initialized():
         for key in logs:
@@ -260,7 +381,9 @@ def train_model(
     iterations_per_epoch=-1,
     epoch_init=0,
     loss_init=np.inf,
+    best_epoch_init=None,
     use_amp=False,
+    amp_dtype=torch.float16,
     run=None,
     ema_model=None,
     ema_decay=0.999,
@@ -268,16 +391,28 @@ def train_model(
     distill_alpha=0.5,
     distill_beta=0.5,
     distill_T=4.0,
+    distill_teacher_slice=None,
+    distill_standardize=False,
+    distill_cls=False,
+    distill_gamma=0.5,
+    distill_cls_num_tokens=4,
 ):
     checkpoint_name = get_checkpoint_name(save_tag)
+    last_checkpoint_name = get_last_checkpoint_name(save_tag)
 
     losses = {
         "train_loss": [],
         "val_loss": [],
     }
 
-    tracker = {"bestValLoss": loss_init, "bestEpoch": epoch_init}
-    if use_amp:
+    tracker = {
+        "bestValLoss": loss_init,
+        "bestEpoch": epoch_init if best_epoch_init is None else best_epoch_init,
+    }
+    if use_amp and amp_dtype == torch.float16:
+        # GradScaler's loss-scaling only guards against fp16 underflow; bf16's
+        # wider exponent range doesn't need it and scaling can push bf16
+        # values toward overflow instead, so skip it for that dtype.
         gscaler = amp.GradScaler()
     else:
         gscaler = None
@@ -301,6 +436,7 @@ def train_model(
             use_event_loss=use_event_loss,
             iterations_per_epoch=iterations_per_epoch,
             use_amp=use_amp,
+            amp_dtype=amp_dtype,
             gscaler=gscaler,
             ema_model=ema_model,
             ema_decay=ema_decay,
@@ -308,6 +444,12 @@ def train_model(
             distill_alpha=distill_alpha,
             distill_beta=distill_beta,
             distill_T=distill_T,
+            distill_teacher_slice=distill_teacher_slice,
+            distill_standardize=distill_standardize,
+            distill_cls=distill_cls,
+            distill_gamma=distill_gamma,
+            distill_cls_num_tokens=distill_cls_num_tokens,
+            epoch=epoch,
         )
         val_logs = val_step(
             model,
@@ -323,6 +465,11 @@ def train_model(
             distill_alpha=distill_alpha,
             distill_beta=distill_beta,
             distill_T=distill_T,
+            distill_teacher_slice=distill_teacher_slice,
+            distill_standardize=distill_standardize,
+            distill_cls=distill_cls,
+            distill_gamma=distill_gamma,
+            distill_cls_num_tokens=distill_cls_num_tokens,
         )
 
         losses["train_loss"].append(train_logs["loss"])
@@ -350,6 +497,11 @@ def train_model(
                 print(
                     f"KD Loss: {train_logs['loss_kd']:.4f}, KD Val Loss: {val_logs['loss_kd']:.4f}"
                 )
+                if distill_cls:
+                    print(
+                        f"CLS-MSE Loss: {train_logs['loss_cls_mse']:.4f}, "
+                        f"CLS-MSE Val Loss: {val_logs['loss_cls_mse']:.4f}"
+                    )
             print(
                 "Time taken for epoch {} is {} sec".format(epoch, time.time() - start)
             )
@@ -371,11 +523,28 @@ def train_model(
                     checkpoint_name,
                 )
 
-        if run is not None:
-            for key in train_logs:
-                run.log({f"train {key}": train_logs[key]})
-            for key in val_logs:
-                run.log({f"val {key}": val_logs[key]})
+        if is_master_node():
+            save_checkpoint(
+                model,
+                ema_model,
+                epoch + 1,
+                optimizer,
+                losses["val_loss"][-1],
+                lr_scheduler,
+                output_dir,
+                last_checkpoint_name,
+                best_loss=tracker["bestValLoss"],
+                best_epoch=tracker["bestEpoch"],
+            )
+
+        if run is not None and is_master_node():
+            run.log(
+                {
+                    **{f"train {key}": train_logs[key] for key in train_logs},
+                    **{f"val {key}": val_logs[key] for key in val_logs},
+                },
+                step=epoch,
+            )
 
         if epoch - tracker["bestEpoch"] > patience:
             print(f"breaking on device: {device}")
@@ -398,6 +567,7 @@ def run(
     wandb=False,
     fine_tune: bool = False,
     resuming: bool = False,
+    seed: int = -1,
     num_feat: int = 4,
     model_size: str = "small",
     interaction: bool = False,
@@ -423,6 +593,7 @@ def run(
     epoch: int = 15,
     warmup_epoch: int = 1,
     use_amp: bool = False,
+    amp_dtype: str = "fp16",
     optim: str = "lion",
     sched: str = "cosine",
     b1: float = 0.95,
@@ -442,37 +613,167 @@ def run(
     distill_alpha: float = 0.5,
     distill_beta: float = 0.5,
     distill_T: float = 4.0,
+    distill_teacher_slice: str = "",
+    distill_standardize: bool = False,
+    distill_cls: bool = False,
+    distill_gamma: float = 0.5,
+    distill_cls_teacher_dim: int = 1024,
+    arch: str = "pet2",
+    energy_weighted_pool: bool = False,
+    num_interaction_layers: int = 0,
+    interaction_k: int = 0,
+    act_layer: str = "gelu",
+    deepsets_fixed_n: int = 0,
 ):
+    if energy_weighted_pool and arch != "deep-sets":
+        raise ValueError("--energy-weighted-pool requires --arch deep-sets.")
+
+    if (num_interaction_layers or interaction_k) and arch != "deep-sets":
+        raise ValueError(
+            "--num-interaction-layers / --interaction-k require --arch deep-sets."
+        )
+
+    if act_layer not in ACT_LAYERS:
+        raise ValueError(
+            f"--act-layer must be one of {list(ACT_LAYERS)}, got '{act_layer}'"
+        )
+    if act_layer != "gelu" and arch != "deep-sets":
+        raise ValueError("--act-layer is only wired for --arch deep-sets.")
+    _act_layer_cls = ACT_LAYERS[act_layer]
+
+    if deepsets_fixed_n:
+        if arch != "deep-sets":
+            raise ValueError("--deepsets-fixed-n requires --arch deep-sets.")
+        if num_interaction_layers:
+            raise ValueError(
+                "--deepsets-fixed-n is not supported with "
+                "--num-interaction-layers (message passing needs the mask)."
+            )
+        if energy_weighted_pool:
+            raise ValueError(
+                "--deepsets-fixed-n is incompatible with --energy-weighted-pool."
+            )
+
     if distill and (not teacher_labels_dir or not teacher_tag):
         raise ValueError(
             "--distill requires both --teacher_labels_dir and --teacher_tag."
         )
 
+    if distill_cls and arch != "pet2":
+        raise ValueError(
+            "--distill-cls requires --arch pet2 (needs a token-based body "
+            "embedding via outputs['x_body']; DeepSets/MLP students have no "
+            "equivalent representation)."
+        )
+
+    _teacher_slice = None
+    if distill_teacher_slice:
+        parts = distill_teacher_slice.split(":")
+        _teacher_slice = (int(parts[0]), int(parts[1]))
+
+    amp_dtypes = {"fp16": torch.float16, "bf16": torch.bfloat16}
+    if amp_dtype not in amp_dtypes:
+        raise ValueError(f"--amp-dtype must be one of {list(amp_dtypes)}, got '{amp_dtype}'")
+    _amp_dtype = amp_dtypes[amp_dtype]
+
     local_rank, rank, size = ddp_setup()
 
-    model_params = get_model_parameters(model_size)
+    if seed >= 0:
+        # Rank-offset so DDP replicas still see different data draws, but the
+        # whole run is reproducible given `seed` -- needed for a controlled A/B
+        # (e.g. --distill-standardize on vs off with identical init + data order).
+        import random as _random
+
+        _s = seed + rank
+        _random.seed(_s)
+        np.random.seed(_s)
+        torch.manual_seed(_s)
+        torch.cuda.manual_seed_all(_s)
+        if rank == 0:
+            print(f"[seed] deterministic run, base seed {seed} (+rank)")
+
     # set up model
-    model = PET2(
-        input_dim=num_feat,
-        use_int=interaction,
-        local_int=local_interaction,
-        int_type=interaction_type,
-        conditional=conditional,
-        cond_dim=num_cond,
-        pid=use_pid,
-        pid_dim=pid_dim,
-        add_info=use_add,
-        add_dim=num_add,
-        mode=mode,
-        num_classes=num_classes,
-        num_gen_classes=num_gen_classes,
-        mlp_drop=mlp_drop,
-        attn_drop=attn_drop,
-        feature_drop=feature_drop,
-        num_coord=num_coord,
-        K=K,
-        **model_params,
-    )
+    if arch == "pet2":
+        model_params = get_model_parameters(model_size)
+        model = PET2(
+            input_dim=num_feat,
+            use_int=interaction,
+            local_int=local_interaction,
+            int_type=interaction_type,
+            conditional=conditional,
+            cond_dim=num_cond,
+            pid=use_pid,
+            pid_dim=pid_dim,
+            add_info=use_add,
+            add_dim=num_add,
+            mode=mode,
+            num_classes=num_classes,
+            num_gen_classes=num_gen_classes,
+            mlp_drop=mlp_drop,
+            attn_drop=attn_drop,
+            feature_drop=feature_drop,
+            num_coord=num_coord,
+            K=K,
+            **model_params,
+        )
+    elif arch == "deep-sets":
+        ds_params = get_deepsets_parameters(model_size)
+        model = DeepSets(
+            input_dim=num_feat,
+            num_classes=num_classes,
+            pid=use_pid,
+            pid_dim=pid_dim,
+            add_info=use_add,
+            add_dim=num_add,
+            conditional=conditional,
+            cond_dim=num_cond,
+            mode=mode,
+            mlp_drop=mlp_drop,
+            energy_weighted_pool=energy_weighted_pool,
+            num_interaction_layers=num_interaction_layers,
+            interaction_k=interaction_k,
+            act_layer=_act_layer_cls,
+            fixed_n=deepsets_fixed_n,
+            **ds_params,
+        )
+        # Saved into the checkpoint so the exact network can be rebuilt for FPGA
+        # conversion: activation and masking have no parameters, so they cannot
+        # be recovered from the weights.
+        model.arch_config = {
+            "arch": arch,
+            "size": model_size,
+            "dims": ds_params,
+            "input_dim": num_feat,
+            "num_classes": num_classes,
+            "act_layer": act_layer,
+            "fixed_n": deepsets_fixed_n,  # 0 = masked mean over valid particles
+            "num_interaction_layers": num_interaction_layers,
+            "interaction_k": interaction_k,
+            "energy_weighted_pool": energy_weighted_pool,
+            "pid": use_pid,
+            "add_info": use_add,
+            "conditional": conditional,
+            "quant": None,
+        }
+    elif arch == "mlp":
+        mlp_params = get_mlp_parameters(model_size)
+        model = MLPStudent(
+            input_dim=num_feat,
+            num_classes=num_classes,
+            mode=mode,
+            **mlp_params,
+        )
+    else:
+        raise ValueError(f"Unknown arch '{arch}'. Choose from: pet2, deep-sets, mlp")
+
+    if distill_cls:
+        # Attached as a submodule (not a free-standing module passed around)
+        # so it rides along for free with get_param_groups/DDP-wrap/EMA/
+        # checkpoint save-restore -- all of which already operate on `model`.
+        # Trained jointly with the student, discarded at inference.
+        student_flat_dim = model_params["num_tokens"] * model_params["base_dim"]
+        teacher_flat_dim = model_params["num_tokens"] * distill_cls_teacher_dim
+        model.cls_projector = nn.Linear(student_flat_dim, teacher_flat_dim)
 
     if rank == 0:
         d = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -582,12 +883,23 @@ def run(
 
     epoch_init = 0
     loss_init = np.inf
+    best_epoch_init = None
     checkpoint_name = None
 
-    if os.path.isfile(os.path.join(outdir, get_checkpoint_name(save_tag))) and resuming:
+    last_checkpoint_path = os.path.join(outdir, get_last_checkpoint_name(save_tag))
+    best_checkpoint_path = os.path.join(outdir, get_checkpoint_name(save_tag))
+
+    if resuming and os.path.isfile(last_checkpoint_path):
+        if is_master_node():
+            print(f"Continue training with checkpoint from {last_checkpoint_path}")
+        checkpoint_name = get_last_checkpoint_name(save_tag)
+        fine_tune = False
+
+    elif resuming and os.path.isfile(best_checkpoint_path):
         if is_master_node():
             print(
-                f"Continue training with checkpoint from {os.path.join(outdir, get_checkpoint_name(save_tag))}"
+                f"No last-epoch checkpoint found, continuing training with best "
+                f"checkpoint from {best_checkpoint_path}"
             )
         checkpoint_name = get_checkpoint_name(save_tag)
         fine_tune = False
@@ -600,7 +912,7 @@ def run(
         checkpoint_name = get_checkpoint_name(pretrain_tag)
 
     if checkpoint_name is not None:
-        epoch_init, loss_init = restore_checkpoint(
+        epoch_init, loss_init, best_epoch_init = restore_checkpoint(
             model,
             outdir,
             checkpoint_name,
@@ -611,6 +923,22 @@ def run(
             lr_scheduler=lr_scheduler,
             fine_tune=fine_tune,
         )
+
+    if wandb and num_workers > 0:
+        # Force the persistent DataLoader worker pool to fork now, before wandb.init()
+        # (below) starts its background async-service thread. If workers fork *after*
+        # wandb is live, they inherit wandb's Python objects but not the background
+        # thread that services them -- when Python's GC later finalizes one of those
+        # inherited objects inside a worker (a matter of allocation-pressure timing,
+        # not anything data-dependent), the finalizer calls back into wandb expecting
+        # that thread to respond and blocks forever, freezing the worker mid-read and
+        # hanging the whole DDP job (all other ranks then hang waiting on this rank's
+        # next collective). Confirmed via a live py-spy capture -- see
+        # distill-lazy-teacher-progress memory, 2026-08-08 root-cause entry. Discarding
+        # the iterator here is safe: with persistent_workers=True, the DataLoader caches
+        # and reuses the same worker pool on every later `iter()` call.
+        next(iter(train_loader))
+        next(iter(val_loader))
 
     if wandb:
         import wandb
@@ -632,6 +960,15 @@ def run(
                 "epochs": epoch,
                 "batch size": batch,
                 "mode": mode,
+                "size": model_size,
+                "fine_tune": fine_tune,
+                "distill": distill,
+                "distill_alpha": distill_alpha,
+                "distill_beta": distill_beta,
+                "distill_T": distill_T,
+                "distill_standardize": distill_standardize,
+                "distill_cls": distill_cls,
+                "distill_gamma": distill_gamma,
             },
         )
     else:
@@ -665,13 +1002,19 @@ def run(
         iterations_per_epoch=iterations,
         epoch_init=epoch_init,
         loss_init=loss_init,
+        best_epoch_init=best_epoch_init,
         use_amp=use_amp,
+        amp_dtype=_amp_dtype,
         run=run,
         ema_model=ema_model,
         distill=distill,
         distill_alpha=distill_alpha,
         distill_beta=distill_beta,
         distill_T=distill_T,
+        distill_teacher_slice=_teacher_slice,
+        distill_standardize=distill_standardize,
+        distill_cls=distill_cls,
+        distill_gamma=distill_gamma,
     )
 
     dist.destroy_process_group()

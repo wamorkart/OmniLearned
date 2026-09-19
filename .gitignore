@@ -1,3 +1,19 @@
 dist/
 src/omnilearned/_version.py
 __pycache__
+*.swp
+*.swo
+
+wandb/
+*.npz
+*.log
+*.h5
+*.npy
+checks/ab_fp32/
+top/
+logs/
+x/
+LHCO/
+
+# Claude Code session-local settings/tooling
+.claude/
