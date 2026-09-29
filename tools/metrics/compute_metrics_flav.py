@@ -6,13 +6,19 @@ empirically in analysis/characterize_atlas_flav.py:
 
     0 = light    1 = c    2 = b    3 = tau
 
-Discriminants follow the ATLAS FTAG log-likelihood-ratio form:
+Scoring reproduces the notebook used for the OmniLearned paper numbers
+(https://gist.github.com/ViniciusMikuni/dbcfda9da5f082194bf996298dedff0b):
 
-    D_b = log( p_b / (f_c p_c + f_tau p_tau + (1 - f_c - f_tau) p_light) )
-    D_c = log( p_c / (f_b p_b + (1 - f_b) p_light) )
+  * jets are required to have pT = exp(cond[:, 0]) > 20 GeV;
+  * discriminants are the ATLAS FTAG log-likelihood ratios
 
-Rejection of a background flavour at a signal working point = 1 / (background
-efficiency at the score threshold that gives the requested signal efficiency).
+        D_b = log( p_b / (f_c p_c + f_tau p_tau + (1 - f_c - f_tau) p_light) )
+        D_c = log( p_c / (f_b p_b + f_tau p_tau + (1 - f_b - f_tau) p_light) )
+
+    with f_c = 0.2, f_b = 0.2, f_tau = 0.01, and log of a non-positive ratio
+    set to 0 (np.ma.log(...).filled(0));
+  * rejection of a background flavour is taken from the signal-vs-that-
+    background ROC curve at the first point with tpr > working point.
 
 Usage:
     python compute_metrics_flav.py --indir /path/to/eval/dir \
@@ -25,7 +31,7 @@ import glob
 import os
 
 import numpy as np
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, roc_curve
 
 CLASS_NAMES = ["light", "c", "b", "tau"]
 LIGHT, C, B, TAU = 0, 1, 2, 3
@@ -33,10 +39,12 @@ LIGHT, C, B, TAU = 0, 1, 2, 3
 B_WPS = [0.60, 0.70, 0.77, 0.85]
 C_WPS = [0.20, 0.30, 0.40]
 
-# Background composition priors for the LLR discriminants (ATLAS-style).
+# Background composition priors for the LLR discriminants (paper values).
 F_C = 0.2      # c fraction in the b-tagging background hypothesis
-F_TAU = 0.0    # tau fraction in the b-tagging background hypothesis
 F_B = 0.2      # b fraction in the c-tagging background hypothesis
+F_TAU = 0.01   # tau fraction in both background hypotheses
+
+PT_CUT = 20.0  # GeV, applied to exp(cond[:, 0])
 
 
 def load_rank_files(indir, tag):
@@ -45,32 +53,35 @@ def load_rank_files(indir, tag):
     if not paths:
         raise FileNotFoundError(f"no files matching {pat}")
     print(f"Found {len(paths)} rank files")
-    preds, labels = [], []
+    preds, labels, pts = [], [], []
     for p in paths:
         z = np.load(p)
         preds.append(z["prediction"].astype(np.float64))
         labels.append(z["pid"].astype(np.int64))
-    return np.concatenate(preds), np.concatenate(labels)
+        pts.append(np.exp(z["cond"][:, 0].astype(np.float64)))
+    return np.concatenate(preds), np.concatenate(labels), np.concatenate(pts)
 
 
 def load_concat_file(path):
     z = np.load(path)
-    return z["prediction"].astype(np.float64), z["pid"].astype(np.int64)
+    pt = np.exp(z["cond"][:, 0].astype(np.float64))
+    return z["prediction"].astype(np.float64), z["pid"].astype(np.int64), pt
 
 
 def rej_at_wp(sig_score, bkg_score, sig_eff):
-    """1 / bkg_eff at the threshold giving the requested signal efficiency."""
-    thr = np.quantile(sig_score, 1.0 - sig_eff)
-    bkg_eff = np.mean(bkg_score >= thr)
-    return np.inf if bkg_eff == 0 else 1.0 / bkg_eff
+    """1 / bkg_eff at the first ROC point with signal efficiency > sig_eff."""
+    y = np.concatenate([np.ones(len(sig_score)), np.zeros(len(bkg_score))])
+    fpr, tpr, _ = roc_curve(y, np.concatenate([sig_score, bkg_score]))
+    i = np.argmax(tpr > sig_eff)
+    return np.inf if fpr[i] == 0 else 1.0 / fpr[i]
 
 
 def llr(num, *dens_terms):
     den = np.zeros_like(num)
     for frac, p in dens_terms:
         den = den + frac * p
-    eps = 1e-12
-    return np.log((num + eps) / (den + eps))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.ma.log(num / den).filled(0)
 
 
 def main():
@@ -82,13 +93,13 @@ def main():
     args = ap.parse_args()
 
     if args.indir:
-        preds, labels = load_rank_files(args.indir, args.tag)
+        preds, labels, pt = load_rank_files(args.indir, args.tag)
     else:
-        preds, labels = load_concat_file(args.file)
+        preds, labels, pt = load_concat_file(args.file)
 
-    # Guard against a stray extra axis / renormalise.
-    preds = preds[:, :4]
-    preds = preds / preds.sum(axis=1, keepdims=True)
+    n_all = len(labels)
+    keep = pt > PT_CUT
+    preds, labels = preds[keep, :4], labels[keep]
     p_light, p_c, p_b, p_tau = preds[:, LIGHT], preds[:, C], preds[:, B], preds[:, TAU]
 
     n = len(labels)
@@ -97,7 +108,7 @@ def main():
     acc = (pred_cls == labels).mean()
 
     print(f"\n=== atlas_flav jet-flavour head  |  tag: {args.tag} ===")
-    print(f"  N jets    : {n:,}")
+    print(f"  N jets    : {n:,}  (pT > {PT_CUT:g} GeV, of {n_all:,})")
     for i, name in enumerate(CLASS_NAMES):
         frac = counts[i] / n
         recall = (pred_cls[labels == i] == i).mean() if counts[i] else float("nan")
@@ -125,11 +136,11 @@ def main():
         print(f"    {wp:>7.0%} {cells}")
 
     # c-tagging: signal = c, discriminant D_c.
-    D_c = llr(p_c, (F_B, p_b), (1.0 - F_B, p_light))
+    D_c = llr(p_c, (F_B, p_b), (F_TAU, p_tau), (1.0 - F_B - F_TAU, p_light))
     is_c = labels == C
     sig_c = D_c[is_c]
     bkgs_c = {"light": D_c[labels == LIGHT], "b": D_c[labels == B], "tau": D_c[labels == TAU]}
-    print(f"\n  c-tagging  (D_c LLR, f_b={F_B})   "
+    print(f"\n  c-tagging  (D_c LLR, f_b={F_B}, f_tau={F_TAU})   "
           f"AUC(c vs all)={roc_auc_score(is_c.astype(int), D_c):.4f}")
     print(f"    {'c-eff':>7} " + "".join(f"{'rej_'+k:>12}" for k in bkgs_c))
     for wp in C_WPS:
