@@ -62,7 +62,7 @@ if [ ! -f "$LOGS/${QAT_TAG}.done" ]; then
     srun -l -u bash -c "source $REPO/scripts/export_ddp.sh; python tools/quantize/qat_deepsets.py --tag $FLOAT_TAG \
         --save-tag $QAT_TAG --init-dir $CKPT --output-dir $CKPT --epochs 15 --warmup-epoch 1 \
         --lr 5e-5 --wd 0.5 --batch 128 --iterations 1000 --num-workers 4 --teacher-dir $TEACHER \
-        --teacher-tag fine_tune_top_l $KD" || { log "QAT failed"; exit 1; }
+        --teacher-tag fine_tune_top_l $KD --wandb" || { log "QAT failed"; exit 1; }
     touch "$LOGS/${QAT_TAG}.done"
 fi
 

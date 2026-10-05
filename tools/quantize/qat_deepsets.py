@@ -317,6 +317,7 @@ def main():
                     help="quantize the residual stream and pool output to this many bits (0 = off)")
     ap.add_argument("--relu-uint", action=argparse.BooleanOptionalAction, default=True,
                     help="unsigned input quantizer for Linears fed by a ReLU (phi/rho fc2)")
+    ap.add_argument("--wandb", action="store_true", help="log to wandb (project OmniBoone, run name = --save-tag)")
     args = ap.parse_args()
 
     local_rank, rank, size = ddp_setup()
@@ -400,6 +401,21 @@ def main():
         device = "cpu"
     model = DDP(model, **kwarg)
 
+    run = None
+    if args.wandb:
+        # Fork the persistent DataLoader workers before wandb.init() starts its
+        # service thread; see the same block in omnilearned.train.run.
+        next(iter(train_loader))
+        next(iter(val_loader))
+        import wandb
+
+        run = wandb.init(
+            project="OmniBoone",
+            name=args.save_tag,
+            mode=None if is_master_node() else "disabled",
+            config={**vars(args), "qat": "full_quant", "size": shape["size"], "fixed_n": shape["fixed_n"]},
+        )
+
     train_model(
         model,
         train_loader,
@@ -417,7 +433,10 @@ def main():
         distill_alpha=args.distill_alpha,
         distill_beta=args.distill_beta,
         distill_T=args.distill_t,
+        run=run,
     )
+    if run is not None:
+        run.finish()
 
 
 if __name__ == "__main__":

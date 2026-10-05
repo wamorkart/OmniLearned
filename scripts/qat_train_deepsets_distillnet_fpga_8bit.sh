@@ -33,7 +33,7 @@ cmd="/global/homes/t/twamorka/omnilearned-fpga/env/bin/python tools/quantize/qat
   --batch 128 --iterations 1000 --num-workers 4 \
   --teacher-dir /pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion_fine_tune_top_l \
   --teacher-tag fine_tune_top_l \
-  --distill-alpha 0.5 --distill-beta 0.5 --distill-t 4.0"
+  --distill-alpha 0.5 --distill-beta 0.5 --distill-t 4.0 --wandb"
 
 set -x
 srun -l -u \
