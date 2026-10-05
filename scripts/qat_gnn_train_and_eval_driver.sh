@@ -5,7 +5,7 @@
 #
 # Launch:  screen -dmS qat_gnn bash scripts/qat_gnn_train_and_eval_driver.sh
 #
-# One-shot: qat_deepsets.py always warm-starts from the float --tag, so if the
+# One-shot: qat_deepsets_legacy.py always warm-starts from the float --tag, so if the
 # salloc is preempted the rerun just restarts the 15-epoch fine-tune cleanly.
 set -u
 cd /global/cfs/cdirs/m3246/twamorka/omnilearned_test/OmniLearned

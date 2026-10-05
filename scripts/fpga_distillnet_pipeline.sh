@@ -7,9 +7,9 @@
 #   1. float KD training      distill_loop_top.sh top_deepsets_distillnet_fpga
 #                             (4-node resubmit loop, exits 0 after 50 epochs)
 #   2. float test eval        run_eval.sh + compute_metrics_top.py
-#   3. 8-bit QAT              qat_train_deepsets_distillnet_fpga_8bit.sh (4 node)
+#   3. 8-bit QAT              qat_train_deepsets_distillnet_fpga_8bit_legacy.sh (4 node)
 #   4. QAT test eval          qat_deepsets_fpga_eval.sh (1 GPU)
-#   5. QONNX export           qat_deepsets_export_qonnx.py  (CPU salloc)
+#   5. QONNX export           qat_deepsets_export_qonnx_legacy.py  (CPU salloc)
 #   6. hls4ml QONNX ingestion hls4ml_convert_qonnx.py       (CPU salloc)
 #
 #   screen -dmS fpga_distillnet bash scripts/fpga_distillnet_pipeline.sh
@@ -90,9 +90,9 @@ QAT_CKPT="$CKPT_DIR/best_model_${QAT_TAG}.pt"
 if [ -f "$QAT_CKPT" ]; then
     log "[3/6] QAT checkpoint already present ($QAT_CKPT) -- skip"
 else
-    log "[3/6] 8-bit QAT: salloc 4 node x 4 GPU, qat_train_deepsets_distillnet_fpga_8bit.sh"
+    log "[3/6] 8-bit QAT: salloc 4 node x 4 GPU, qat_train_deepsets_distillnet_fpga_8bit_legacy.sh"
     salloc -C gpu -q interactive -t 240 --nodes 4 --ntasks-per-node 4 --gpus-per-node 4 -A m3246 \
-        bash scripts/qat_train_deepsets_distillnet_fpga_8bit.sh \
+        bash scripts/qat_train_deepsets_distillnet_fpga_8bit_legacy.sh \
         2>&1 | tee "$LOG_DIR/stage3_qat.out"
     log "[3/6] QAT salloc exited ${PIPESTATUS[0]}"
 fi

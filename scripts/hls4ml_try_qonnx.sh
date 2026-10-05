@@ -33,7 +33,7 @@ echo "############################################################"
 PLAIN_CLEAN="$QDIR/plain/qat_top_deepsets_distillnet_a05_T4_8bit_clean.onnx"
 if [[ ! -f "$PLAIN_CLEAN" ]]; then
     echo "[$(date '+%T')] exporting plain distillnet QAT -> QONNX"
-    $PY tools/quantize/qat_deepsets_export_qonnx.py \
+    $PY tools/quantize/qat_deepsets_export_qonnx_legacy.py \
         --tag qat_top_deepsets_distillnet_a05_T4_8bit \
         --size distillnet --bits 8 \
         --num-interaction-layers 0 --interaction-k 0 \

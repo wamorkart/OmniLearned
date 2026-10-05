@@ -224,3 +224,4 @@ symlink to it. This keeps both reference styles working:
 - `run_all_chunks.sh` / `submit_datasets.sh` — chunked teacher-logit generation
 - `train_omnifold_pythia_herwig.sh` / `distill_loop_omnifold.sh` — OmniFold unfolding
 - `qat_train_deepsets_distillnet_fpga_8bit.sh` / `fullquant_chain.sbatch` — full-quant QAT for the FPGA student
+- `qat_train_deepsets_distillnet{,_gnn,_fpga}_8bit*.sh`, `qat_deepsets*_eval.sh` — legacy (non-full-quant) QAT via `tools/quantize/*_legacy.py`, used for the ML4PS paper table (masked + GNN students)

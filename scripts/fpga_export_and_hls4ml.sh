@@ -23,8 +23,8 @@ mkdir -p "$QONNX_DIR" "$LOG_DIR"
 if [ -f "$CLEAN_ONNX" ]; then
     echo "[export] $CLEAN_ONNX already present -- skip"
 else
-    echo "[export] qat_deepsets_export_qonnx.py -> $QONNX_DIR"
-    "$FPGA_PY" tools/quantize/qat_deepsets_export_qonnx.py \
+    echo "[export] qat_deepsets_export_qonnx_legacy.py -> $QONNX_DIR"
+    "$FPGA_PY" tools/quantize/qat_deepsets_export_qonnx_legacy.py \
         --tag "$QAT_TAG" --size distillnet --bits 8 \
         --act-layer relu --deepsets-fixed-n 64 \
         --num-interaction-layers 0 --interaction-k 0 \
