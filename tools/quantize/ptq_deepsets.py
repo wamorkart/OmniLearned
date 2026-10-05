@@ -32,7 +32,7 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from tqdm.auto import tqdm
 
 from omnilearned.dataloader import load_data
-from omnilearned.network import DeepSets
+from omnilearned.network import DeepSets, ACT_LAYERS
 from omnilearned.utils import (
     ddp_setup,
     get_checkpoint_name,
@@ -178,6 +178,10 @@ def main():
                     help="message-passing blocks; must match the float run (0 = plain DeepSets)")
     ap.add_argument("--interaction-k", type=int, default=0,
                     help="leading-pT constituents kept by the message-passing block")
+    ap.add_argument("--act-layer", default="gelu", choices=sorted(ACT_LAYERS),
+                    help="must match the float run (relu for the hls4ml fixed-N student)")
+    ap.add_argument("--deepsets-fixed-n", type=int, default=0,
+                    help="fixed constituent count of the float run (0 = masked body)")
     ap.add_argument(
         "--weights-float", action="store_true",
         help="quantize only the linear-layer INPUTS to the target bit width; "
@@ -194,6 +198,8 @@ def main():
         input_dim=4, num_classes=2, mode="classifier",
         num_interaction_layers=args.num_interaction_layers,
         interaction_k=args.interaction_k,
+        act_layer=ACT_LAYERS[args.act_layer],
+        fixed_n=args.deepsets_fixed_n,
         **ds_params,
     )
     restore_checkpoint(
