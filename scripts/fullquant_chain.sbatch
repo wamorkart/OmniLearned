@@ -13,7 +13,7 @@
 #
 # Optional env vars:
 #   BASE      output root: checkpoints/, qonnx/fpga/, logs/fullquant/ (default $PSCRATCH/omnilearned)
-#   FPGA_ENV  conda env with Brevitas/QONNX (default the m2616 omnilearned-fpga env)
+#   FPGA_ENV  conda env with Brevitas/QONNX (default ~twamorka/omnilearned-fpga/env)
 #   EPOCH, FLOAT_TAG, QAT_TAG, TEACHER, DATA
 #SBATCH -A m3246
 #SBATCH -C gpu
@@ -37,7 +37,7 @@ CKPT=$BASE/checkpoints/
 LOGS=$BASE/logs/fullquant
 DATA=${DATA:-/global/cfs/cdirs/m4567/www/}
 TEACHER=${TEACHER:-/pscratch/sd/t/twamorka/omnilearned/teacher_logits/companion_fine_tune_top_l}
-FPGA_ENV=${FPGA_ENV:-/global/cfs/cdirs/m2616/alexm/conda/envs/omnilearned-fpga}
+FPGA_ENV=${FPGA_ENV:-/global/homes/t/twamorka/omnilearned-fpga/env}
 [ -f "$REPO/tools/quantize/qat_deepsets.py" ] || { echo "run from the repo root"; exit 1; }
 mkdir -p "$CKPT" "$BASE/qonnx/fpga" "$LOGS"
 
@@ -54,7 +54,7 @@ if [ ! -f "$CKPT/training_${FLOAT_TAG}.json" ]; then
         --dataset top --mode classifier --num-classes 2 --path $DATA --arch deep-sets \
         --size $SIZE --act-layer relu --deepsets-fixed-n $N --batch 128 \
         --iterations 1000 --epoch $EPOCH --lr 5e-4 --wd 0.5 --num-workers 4 --distill --teacher-labels-dir $TEACHER \
-        --teacher-tag fine_tune_top_l $KD --resuming" || { log "float KD failed"; exit 1; }
+        --teacher-tag fine_tune_top_l $KD --resuming --wandb" || { log "float KD failed"; exit 1; }
 fi
 
 if [ ! -f "$LOGS/${QAT_TAG}.done" ]; then
