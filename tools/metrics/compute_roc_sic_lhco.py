@@ -64,12 +64,17 @@ def load_npz_shards(indir, tag, dataset=DATASET, dataset_type="test"):
 def max_sic(fpr, tpr, fpr_floor):
     """Peak of TPR/sqrt(FPR) above fpr_floor -- below it the ratio is noise-
     dominated by the last surviving background events. Random classifier's
-    baseline is 1.0, not 0."""
+    baseline is 1.0, not 0. Also returns the FPR at which the peak is
+    attained, so the caller can convert it to an actual background-event
+    count (fpr * n_bkg) -- the count that determines how much Poisson noise
+    is riding on this single number, not the number of ROC points."""
     keep = fpr > fpr_floor
     tpr, fpr = tpr[keep], fpr[keep]
     if len(fpr) == 0:
-        return float("nan"), 0
-    return np.max(tpr / np.sqrt(fpr)), len(fpr)
+        return float("nan"), 0, float("nan")
+    sic = tpr / np.sqrt(fpr)
+    i = int(np.argmax(sic))
+    return float(sic[i]), len(fpr), float(fpr[i])
 
 
 def save_result(save_tag, nsig, auc, sic, n_bkg, n_sig):
@@ -145,13 +150,25 @@ def main():
 
     auc = roc_auc_score(truth, scores)
     fpr, tpr, _ = roc_curve(truth, scores)
-    sic, n_surviving = max_sic(fpr, tpr, FPR_FLOOR)
+    sic, n_surviving, fpr_at_max = max_sic(fpr, tpr, FPR_FLOOR)
+
+    # fpr is a fraction of n_bkg, so fpr * n_bkg is the actual count of true
+    # background events surviving at that cut -- what the Poisson noise on
+    # max-SIC is riding on, not n_surviving (a ROC-point count, typically much
+    # larger and not what determines statistical reliability here).
+    n_at_floor = FPR_FLOOR * n_bkg
+    n_at_max = fpr_at_max * n_bkg
+    poisson_pct = 100.0 / np.sqrt(max(n_at_max, 1.0))
 
     print(f"save_tag: {SAVE_TAG}")
     print(f"n_background (pure, held-out)  : {n_bkg:,}")
     print(f"n_signal (pure, never injected): {len(score_sig):,}")
     print(f"AUC     : {auc:.4f}")
     print(f"Max SIC : {sic:.4f}  (FPR floor={FPR_FLOOR:g}, {n_surviving:,} ROC points survive)")
+    print(f"FPR granularity (1 bkg event)  : {1.0 / n_bkg:.2e}")
+    print(f"bkg events at FPR floor        : {n_at_floor:.1f}")
+    print(f"max-SIC attained at FPR        : {fpr_at_max:.2e}")
+    print(f"bkg events at max-SIC point    : {n_at_max:.1f}  (+/-{poisson_pct:.0f}% Poisson)")
     print("Reference: a random classifier's max-SIC is 1.0, not 0.")
 
     save_result(SAVE_TAG, NSIG, auc, sic, n_bkg, len(score_sig))
