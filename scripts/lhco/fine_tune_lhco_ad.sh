@@ -41,7 +41,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # ============================================================
 SAVE_TAG_BASE=fine_tune_pretrain_s
 DATASET=lhco_ad
-# PRETRAIN_TAG=pretrain_s
+PRETRAIN_TAG=pretrain_s
 SIZE=small
 NSIG=2000
 DESCRIPT_TAG=scratch1
@@ -53,13 +53,11 @@ LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/nsig_${
 # LHCO_PATH="/global/cfs/cdirs/m3246/mbenyas/OmniLearned_distillation/LHCO/pure_test"
 
 # --iterations 1000 \
-
-# Removed --pretrain-tag and --fine-tune 
-# for the from-scratch comparison run
 cmd="omnilearned train \
   -o ${DIR} \
   --save-tag ${SAVE_TAG} \
   --dataset ${DATASET} --mode classifier --num-classes 2 \
+  --pretrain-tag ${PRETRAIN_TAG} --fine-tune \
   --path ${LHCO_PATH} \
   --size ${SIZE} \
   --interaction --local-interaction \

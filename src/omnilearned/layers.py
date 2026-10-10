@@ -332,17 +332,41 @@ class LocalEmbeddingBlock(nn.Module):
             NoScaleDropout(feature_drop) if feature_drop > 0.0 else nn.Identity()
         )
 
-    def pairwise_distance(self, points):
+        # Added to pairwise_distance's squared distance for any pair of
+        # particles from different jets, so topk's nearest-neighbor search
+        # prefers same-jet particles. delta_eta/delta_phi are jet-radius
+        # scale, so real same-jet squared distances are at most ~O(1-10);
+        # 100 sits a couple orders of magnitude above that (same-jet always
+        # wins) but ~4 orders below the padding distance (~999**2), so a
+        # real cross-jet particle still beats padding when a jet has too
+        # few constituents to fill K same-jet neighbors.
+        self.CROSS_JET_PENALTY = 100.0
+        self._printed_jet_penalty_debug = False
+
+    def pairwise_distance(self, points, jet_id=None):
         r = torch.sum(points * points, dim=2, keepdim=True)
         m = torch.bmm(points, points.transpose(1, 2))
         D = r - 2 * m + r.transpose(1, 2)
+        if jet_id is not None:
+            diff_jet = (jet_id.unsqueeze(2) != jet_id.unsqueeze(1)).float()
+            if not self._printed_jet_penalty_debug:
+                same_mean = D[diff_jet == 0].mean().item()
+                cross_mean = D[diff_jet == 1].mean().item()
+                print(
+                    f"[LocalEmbeddingBlock] same-jet dist mean={same_mean:.3f}  "
+                    f"cross-jet dist mean before penalty={cross_mean:.3f}  "
+                    f"after penalty (+{self.CROSS_JET_PENALTY:g})="
+                    f"{cross_mean + self.CROSS_JET_PENALTY:.3f}"
+                )
+                self._printed_jet_penalty_debug = True
+            D = D + diff_jet * self.CROSS_JET_PENALTY
         return D
 
-    def forward(self, points, features, mask, indices=None):
+    def forward(self, points, features, mask, indices=None, jet_id=None):
         batch_size, num_points, num_dims = features.shape
         if indices is None:
             distances = self.pairwise_distance(
-                points
+                points, jet_id=jet_id
             )  # uses custom pairwise function, not torch.cdist
             _, indices = torch.topk(-distances, k=self.K + 1, dim=-1)
             indices = indices[:, :, 1:]  # Exclude self

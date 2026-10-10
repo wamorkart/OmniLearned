@@ -555,8 +555,14 @@ class PET_body(nn.Module):
 
         # Move away zero-padded entries
         coord_shift = 999.0 * (~mask).float()
+        # add_info's one-hot marks which jet each particle came from (see
+        # convert_lhco.py); collapse to a per-particle jet label so
+        # local_physics can penalize cross-jet "neighbors" -- delta_eta/
+        # delta_phi are relative to each particle's OWN jet axis, so two
+        # particles from different jets can look spuriously close otherwise.
+        jet_id = add_info.argmax(dim=-1) if add_info is not None else None
         local_features, indices = self.local_physics(
-            coord_shift + x[:, :, : self.num_coord], x, mask
+            coord_shift + x[:, :, : self.num_coord], x, mask, jet_id=jet_id
         )
 
         x_int = None
