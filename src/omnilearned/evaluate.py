@@ -276,6 +276,7 @@ def run(
             conditional=conditional,
             cond_dim=num_cond,
             mode=mode,
+            num_gen_classes=num_gen_classes,
             energy_weighted_pool=energy_weighted_pool,
             num_interaction_layers=num_interaction_layers,
             interaction_k=interaction_k,

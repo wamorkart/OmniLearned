@@ -315,7 +315,10 @@ def get_loss(
                 weights, outputs["y_pred"], y, class_cost, use_event_loss, logs
             )
 
-        loss = loss + loss_class
+        if mode == "ftag":
+            loss = loss + 0.1 * loss_class
+        else:
+            loss = loss + loss_class
 
     if outputs["z_pred"] is not None:
         if data_pid is not None:

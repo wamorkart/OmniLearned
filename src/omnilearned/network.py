@@ -795,11 +795,20 @@ class DeepSetsBody(nn.Module):
             z = z + self.cond_embed(cond)
         return z
 
-    def forward(self, x, cond=None, pid=None, add_info=None):
+    def forward(self, x, cond=None, pid=None, add_info=None, return_tracks=False):
         if self.fixed_n:
+            if return_tracks:
+                raise ValueError("Per-track outputs need the masked body (fixed_n=0).")
             return self._forward_fixed_n(x, cond=cond, pid=pid, add_info=add_info)
 
         if self.interaction_k and x.shape[1] > self.interaction_k:
+            if return_tracks:
+                # Dropped tracks would have no prediction to match their
+                # per-track labels.
+                raise ValueError(
+                    f"Per-track outputs need every track, but inputs have "
+                    f"{x.shape[1]} slots > interaction_k={self.interaction_k}."
+                )
             # Keep the leading-pT K constituents. Inputs are stored
             # pT-descending, so this is a plain slice -- no sort needed.
             k = self.interaction_k
@@ -850,7 +859,32 @@ class DeepSetsBody(nn.Module):
         if cond is not None and self.conditional:
             z = z + self.cond_embed(cond)
 
+        if return_tracks:
+            return z, h, mask
         return z
+
+
+class DeepSetsTrackHead(nn.Module):
+    """Per-track origin classifier for flavour tagging (``mode='ftag'``).
+
+    Each track sees its own φ embedding concatenated with the pooled jet
+    embedding. Only used for the auxiliary training loss: the jet-flavour
+    output never depends on it, so it can be dropped for FPGA inference.
+    """
+
+    def __init__(self, base_dim, num_gen_classes, mlp_ratio=2, act_layer=nn.GELU):
+        super().__init__()
+        self.mlp = MLP(
+            2 * base_dim,
+            int(mlp_ratio * base_dim),
+            out_features=num_gen_classes,
+            act_layer=act_layer,
+        )
+
+    def forward(self, h, z, mask):
+        # h: (B, N, D) per-track, z: (B, D) pooled, mask: (B, N, 1)
+        z = z.unsqueeze(1).expand(-1, h.shape[1], -1)
+        return self.mlp(torch.cat([h, z], dim=-1)) * mask
 
 
 class DeepSetsHead(nn.Module):
@@ -910,6 +944,7 @@ class DeepSets(nn.Module):
         mlp_ratio=2,
         mlp_drop=0.0,
         mode="classifier",
+        num_gen_classes=1,
         pid=False,
         pid_dim=9,
         add_info=False,
@@ -924,12 +959,22 @@ class DeepSets(nn.Module):
         fixed_n=0,
     ):
         super().__init__()
-        if mode not in ["classifier", "pretrain"]:
+        if mode not in ["classifier", "pretrain", "ftag"]:
             raise ValueError(
-                f"DeepSets supports classifier and pretrain modes, got '{mode}'"
+                f"DeepSets supports classifier, pretrain and ftag modes, got '{mode}'"
             )
+        if mode == "ftag":
+            if num_gen_classes < 2:
+                raise ValueError(
+                    "DeepSets ftag mode needs --num-gen-classes > 1 "
+                    "(track-origin classes)."
+                )
+            if fixed_n:
+                raise ValueError("DeepSets ftag mode is incompatible with fixed_n.")
         self.mode = mode
-        self.generator = None  # checkpoint compatibility with PET2 interface
+        # Held in the `generator` slot (like PET2's ftag head) so checkpoints
+        # save/restore it as generator_head; classifier-mode eval skips it.
+        self.generator = None
 
         self.body = DeepSetsBody(
             input_dim=input_dim,
@@ -961,6 +1006,14 @@ class DeepSets(nn.Module):
             act_layer=act_layer,
         )
 
+        if mode == "ftag":
+            self.generator = DeepSetsTrackHead(
+                base_dim,
+                num_gen_classes,
+                mlp_ratio=mlp_ratio,
+                act_layer=act_layer,
+            )
+
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -976,12 +1029,19 @@ class DeepSets(nn.Module):
         return {"norm"}
 
     def forward(self, x, y, cond=None, pid=None, add_info=None):
-        z = self.body(x, cond=cond, pid=pid, add_info=add_info)  # (B, D)
+        z_pred = None
+        if self.generator is not None:
+            z, h, mask = self.body(
+                x, cond=cond, pid=pid, add_info=add_info, return_tracks=True
+            )
+            z_pred = self.generator(h, z, mask)  # (B, N, num_gen_classes)
+        else:
+            z = self.body(x, cond=cond, pid=pid, add_info=add_info)  # (B, D)
         y_pred = self.classifier(z)                               # (B, num_classes)
         return {
             "y_pred": y_pred,
             "y_perturb": None,
-            "z_pred": None,
+            "z_pred": z_pred,
             "v": None,
             "v_weight": None,
             "x_body": None,

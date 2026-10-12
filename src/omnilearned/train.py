@@ -728,6 +728,7 @@ def run(
             conditional=conditional,
             cond_dim=num_cond,
             mode=mode,
+            num_gen_classes=num_gen_classes,
             mlp_drop=mlp_drop,
             energy_weighted_pool=energy_weighted_pool,
             num_interaction_layers=num_interaction_layers,
@@ -745,6 +746,8 @@ def run(
             "dims": ds_params,
             "input_dim": num_feat,
             "num_classes": num_classes,
+            "mode": mode,  # "ftag" adds a training-only per-track head
+            "num_gen_classes": num_gen_classes,
             "act_layer": act_layer,
             "fixed_n": deepsets_fixed_n,  # 0 = masked mean over valid particles
             "num_interaction_layers": num_interaction_layers,
